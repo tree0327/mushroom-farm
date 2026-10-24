@@ -1,0 +1,7 @@
+import { isCronAuthorized, runMorning } from "@/features/push/cron";
+
+// 매일 00:00 UTC(한국 9시) — Supabase Cron 이 부른다.
+export async function POST(req: Request) {
+  if (!isCronAuthorized(req)) return new Response("unauthorized", { status: 401 });
+  return Response.json(await runMorning());
+}
