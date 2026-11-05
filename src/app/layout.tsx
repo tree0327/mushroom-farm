@@ -13,9 +13,9 @@ const pretendard = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "부부 일기",
-  description: "둘이 쓰는 하루 일기",
-  appleWebApp: { capable: true, title: "부부 일기", statusBarStyle: "default" },
+  title: "버섯재배관리",
+  description: "버섯 농장 일지와 분석",
+  appleWebApp: { capable: true, title: "버섯재배관리", statusBarStyle: "default" },
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }, { url: "/favicon.png", sizes: "512x512" }],
     apple: "/apple-touch-icon.png",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#F4F4F7", // globals.css --background
+  themeColor: "#F6F6F6", // globals.css --background
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover", // 아이폰 노치·홈 막대 영역까지 쓰고 안전 영역은 화면에서 띄운다

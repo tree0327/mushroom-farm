@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookHeart, BookOpen, Ellipsis, Ticket } from "lucide-react";
+import { CalendarDays, ChartColumn, Ellipsis, PenLine } from "lucide-react";
 import { cn } from "cn";
 
 const TABS = [
-  { href: "/diary", label: "일기", Icon: BookHeart },
-  { href: "/answer", label: "해답의 책", Icon: BookOpen },
-  { href: "/coupon", label: "쿠폰", Icon: Ticket },
+  { href: "/log", label: "기록", Icon: PenLine },
+  { href: "/list", label: "목록", Icon: CalendarDays },
+  { href: "/stats", label: "분석", Icon: ChartColumn },
   { href: "/more", label: "더보기", Icon: Ellipsis },
 ] as const;
 

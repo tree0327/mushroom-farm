@@ -11,9 +11,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-pretendard), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-heading: var(--font-pretendard), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --color-wife: var(--wife);
-  --color-husband: var(--husband);
-  --color-locked: var(--locked);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -41,29 +38,28 @@
 
 /* 색 토큰 — 값은 여기서만 바꾼다. 규칙은 docs/design.md */
 :root {
-  /* 시안 B 「깔끔한 아이폰 앱」(docs/spec 2026-10-23 디자인 개편) — 연회색 바탕, 흰 카드, 남보라 포인트 하나 */
-  --background: oklch(0.968 0.004 286);       /* #F4F4F7 — layout.tsx themeColor·manifest 와 같은 값 */
-  --foreground: oklch(0.2 0.01 286);
+  /* 시안 B 「버섯 갓 갈색」의 밤색 포인트 + 흰 바탕 라이트 모드(사용자 요청: 베이지 바탕 말고 라이트).
+     바탕·칸·테두리는 무채색, 색은 포인트 하나만.
+     대비(브라우저 실측 11-05): 포인트 위 흰 글자 7.68, 바탕 위 흐린 글자 6.28, 연한 칠 위 흐린 글자 5.96, 바탕 위 빨간 글자 4.98 */
+  --background: oklch(0.973 0 0);        /* layout.tsx themeColor·manifest 와 같은 값 */
+  --foreground: oklch(0.22 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2 0.01 286);
+  --card-foreground: oklch(0.22 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0.01 286);
-  --primary: oklch(0.52 0.2 279);             /* 남보라 #5750D7 */
+  --popover-foreground: oklch(0.22 0 0);
+  --primary: oklch(0.45 0.08 50);             /* 밤색 */
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0.01 286);
-  --secondary-foreground: oklch(0.3 0.01 286);
-  --muted: oklch(0.955 0.005 286);
-  --muted-foreground: oklch(0.5 0.01 286);      /* 바탕·연회색 칠 위에서도 대비 4.5 이상(시안 0.55 는 4.43) */
-  --accent: oklch(0.94 0.02 279);
-  --accent-foreground: oklch(0.3 0.05 279);
-  --destructive: oklch(0.58 0.2 27);
-  --border: oklch(0.91 0.005 286);
-  --input: oklch(0.9 0.005 286);
-  --ring: oklch(0.52 0.2 279);
-  --wife: oklch(0.63 0.2 5);                  /* 아내 표시 분홍 */
-  --husband: oklch(0.55 0.15 250);            /* 남편 표시 파랑 */
-  --locked: oklch(0.5 0.005 286);             /* 잠긴 칸 — 자물쇠·점선으로 구분, 글자 대비 4.5 이상 */
-  --radius: 0.75rem;
+  --secondary: oklch(0.955 0 0);
+  --secondary-foreground: oklch(0.32 0.04 50);
+  --muted: oklch(0.955 0 0);
+  --muted-foreground: oklch(0.47 0 0);
+  --accent: oklch(0.94 0.025 60);              /* 목록 달력의 기록 있는 날 */
+  --accent-foreground: oklch(0.32 0.05 50);
+  --destructive: oklch(0.55 0.2 27);
+  --border: oklch(0.91 0 0);
+  --input: oklch(0.88 0 0);
+  --ring: oklch(0.45 0.08 50);
+  --radius: 0.625rem;
 }
 
 

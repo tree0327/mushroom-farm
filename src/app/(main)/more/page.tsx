@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarOff, ChevronRight, KeyRound, Store } from "lucide-react";
+import { ChevronRight, DoorOpen, Users } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent } from "@/shared/ui/card";
 import { PageBody, PageHeader } from "@/shared/components/page-header";
@@ -8,9 +8,8 @@ import { PushSettings } from "@/features/push/components/push-settings";
 import { signOut } from "@/features/member/actions";
 
 const LINKS = [
-  { href: "/more/sales", label: "매출관리", Icon: Store, adminOnly: false },
-  { href: "/more/rest-days", label: "쉬는 날", Icon: CalendarOff, adminOnly: true },
-  { href: "/more/password", label: "비밀번호 바꾸기", Icon: KeyRound, adminOnly: false },
+  { href: "/more/rooms", label: "호실", Icon: DoorOpen, adminOnly: false },
+  { href: "/more/members", label: "계정", Icon: Users, adminOnly: true },
 ] as const;
 
 export default async function MorePage() {
@@ -40,7 +39,7 @@ export default async function MorePage() {
         <Card>
           <CardContent className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-base font-medium">{me.displayName}</p>
+              <p className="text-base font-medium break-all">{me.email}</p>
               <p className="text-sm text-muted-foreground">{me.isAdmin ? "관리자" : "회원"}</p>
             </div>
             <form action={signOut}>

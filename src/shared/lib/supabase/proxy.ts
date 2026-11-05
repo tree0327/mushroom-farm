@@ -1,8 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// 로그인 없이 열리는 주소. 예약 작업 주소는 자기 비밀 헤더로 막는다.
-const PUBLIC_PATHS = ["/login", "/api/cron/"];
+// 로그인 없이 열리는 주소(로그인 화면, 구글 로그인에서 돌아오는 주소).
+const PUBLIC_PATHS = ["/login", "/auth/"];
 
 // 요청마다 세션 토큰을 갱신하고, 로그인 안 했으면 로그인 화면으로 보낸다.
 // 여기는 빠른 1차 거름이다. 실제 권한 검사는 서버 액션·화면의 requireMember() 와 DB RLS 가 한다.

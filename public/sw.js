@@ -18,7 +18,7 @@ self.addEventListener("push", (event) => {
       icon: "/favicon-192.png",
       badge: "/favicon-192.png",
       tag: data.tag,
-      data: { url: data.url || "/diary" },
+      data: { url: data.url || "/log" },
     }),
   );
 });
@@ -26,7 +26,7 @@ self.addEventListener("push", (event) => {
 // 알림을 누르면 열려 있는 창을 그 화면으로, 없으면 새로 연다.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = new URL(event.notification.data?.url || "/diary", self.location.origin).href;
+  const url = new URL(event.notification.data?.url || "/log", self.location.origin).href;
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
       for (const w of wins) {

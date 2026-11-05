@@ -82,7 +82,7 @@ export function PushSettings() {
     <Card>
       <CardHeader>
         <CardTitle className="text-lg">알림</CardTitle>
-        <CardDescription>21시 일기 알림, 9시 답장 알림, 상대가 쓰거나 답장하면 바로 알려 줘요.</CardDescription>
+        <CardDescription>켜 두면 나중에 붙일 알림(예: 기록 안 한 날)을 이 폰으로 받아요. 지금은 시험 알림만 보낼 수 있어요.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {state === "checking" && <p className="text-muted-foreground">확인 중…</p>}
@@ -146,7 +146,7 @@ export function InstallGuide() {
       </li>
       <li className="flex items-start gap-3">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-medium">3</span>
-        <span>홈 화면의 「부부 일기」 아이콘으로 열고, 더보기 › 알림 켜기를 눌러요.</span>
+        <span>홈 화면의 「버섯재배관리」 아이콘으로 열고, 더보기 › 알림 켜기를 눌러요.</span>
       </li>
     </ol>
   );

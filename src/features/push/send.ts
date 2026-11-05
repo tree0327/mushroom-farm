@@ -7,7 +7,7 @@ export type PushMessage = {
   kind: PushKind;
   refDate: string; // 한국 날짜 YYYY-MM-DD — 중복 막는 열쇠의 일부
   recipientId: number;
-  refId?: number | null; // 일기·쿠폰 id 등. 없으면 null
+  refId?: number | null; // 알림 대상 id. 없으면 null
   title: string;
   body: string;
   url: string; // 알림을 누르면 열 화면

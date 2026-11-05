@@ -1,32 +1,24 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient as createPlainClient } from "@supabase/supabase-js";
 import { createClient } from "@/shared/lib/supabase/server";
-import { fail, okVoid, type Result } from "@/shared/lib/result";
+import { requireMember } from "@/shared/lib/member";
+import { codeFromDbError, fail, okVoid, type Result } from "@/shared/lib/result";
 
-// 아이디만 쓰면 기본 도메인을 붙인다(옛 앱과 같은 계정을 그대로 쓴다).
-const DEFAULT_DOMAIN = "@home.local";
-const toEmail = (id: string) => (id.includes("@") ? id : id + DEFAULT_DOMAIN);
-
-const loginInput = z.object({ id: z.string().trim().min(1).max(100), password: z.string().min(1).max(200) });
-
-export async function signIn(id: string, password: string): Promise<Result> {
-  const input = loginInput.safeParse({ id, password });
-  if (!input.success) return fail("LOGIN_FAILED");
-
+// 구글 로그인 시작: 구글 화면으로 보낸다. 돌아오면 /auth/callback 이 등록된 계정인지 가른다.
+export async function signInWithGoogle(): Promise<void> {
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email: toEmail(input.data.id), password: input.data.password });
-  if (error) return fail("LOGIN_FAILED");
-
-  // 계정은 있어도 회원 표에 없으면 들이지 않는다
-  const { data: me } = await supabase.from("member").select("id").limit(1);
-  if (!me || me.length === 0) {
-    await supabase.auth.signOut();
-    return fail("NOT_MEMBER");
-  }
-  return okVoid();
+  const h = await headers();
+  const origin = h.get("origin") ?? `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: `${origin}/auth/callback`, queryParams: { prompt: "select_account" } },
+  });
+  if (error || !data.url) redirect("/login?e=UNKNOWN");
+  redirect(data.url);
 }
 
 export async function signOut(): Promise<void> {
@@ -35,33 +27,31 @@ export async function signOut(): Promise<void> {
   redirect("/login");
 }
 
-// 비밀번호 바꾸기: 지금 비밀번호를 한 번 더 확인한 뒤 바꾼다(열어 둔 폰을 남이 집어도 못 바꾸게).
-// Supabase 가 6자 미만을 거절한다(weak_password) — 화면도 같은 하한을 쓴다.
-const PASSWORD_MIN = 6;
+// 계정(로그인할 수 있는 구글 이메일) 더하기·빼기 — 관리자만. DB RLS 도 같은 규칙으로 막는다.
+const emailInput = z.string().trim().toLowerCase().pipe(z.email().max(200));
 
-export async function changePassword(current: string, next: string, confirm: string): Promise<Result> {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-  const email = userData.user?.email;
-  if (!email) return fail("UNAUTHENTICATED");
+export async function addMember(email: string): Promise<Result> {
+  const auth = await requireMember();
+  if (!auth.ok) return auth;
+  if (!auth.me.isAdmin) return fail("ADMIN_ONLY");
+  const parsed = emailInput.safeParse(email);
+  if (!parsed.success) return fail("EMAIL_INVALID");
 
-  if (next.length < PASSWORD_MIN || next.length > 200) return fail("PASSWORD_SHORT");
-  if (next !== confirm) return fail("PASSWORD_MISMATCH");
-  if (next === current) return fail("PASSWORD_SAME");
+  const { error } = await auth.supabase.from("member").insert({ email: parsed.data });
+  if (error) return fail(error.code === "23505" ? "EMAIL_DUPLICATE" : codeFromDbError(error));
+  revalidatePath("/more/members");
+  return okVoid();
+}
 
-  // 확인용은 쿠키를 건드리지 않는 따로 된 연결로 — 지금 로그인 상태를 바꾸지 않는다.
-  const check = createPlainClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { error: wrong } = await check.auth.signInWithPassword({ email, password: current });
-  if (wrong) return fail("PASSWORD_WRONG");
-  await check.auth.signOut({ scope: "local" });
+export async function removeMember(id: number): Promise<Result> {
+  const auth = await requireMember();
+  if (!auth.ok) return auth;
+  if (!auth.me.isAdmin) return fail("ADMIN_ONLY");
+  if (id === auth.me.id) return fail("MEMBER_SELF");
 
-  const { error } = await supabase.auth.updateUser({ password: next });
-  if (error) {
-    if (error.code === "weak_password") return fail("PASSWORD_SHORT");
-    if (error.code === "same_password") return fail("PASSWORD_SAME");
-    return fail("UNKNOWN");
-  }
+  const { data, error } = await auth.supabase.from("member").delete().eq("id", id).select("id");
+  if (error) return fail(codeFromDbError(error));
+  if (!data || data.length === 0) return fail("NOT_FOUND");
+  revalidatePath("/more/members");
   return okVoid();
 }

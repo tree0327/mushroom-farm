@@ -8,22 +8,12 @@ export const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 export const okVoid = (): Result => ({ ok: true, data: undefined });
 export const fail = (code: MessageCode): Failure => ({ ok: false, code });
 
-// DB 오류를 code 로 바꾼다. 트리거가 던진 이름(COUPON_* 등)은 그대로, RLS 거절은 FORBIDDEN.
-const DB_CODES = [
-  "COUPON_NOT_RECEIVER",
-  "COUPON_NOT_GIVER",
-  "COUPON_EXPIRED",
-  "COUPON_ALREADY_CHANGED",
-  "COUPON_LOCKED_FIELDS",
-  "ANSWER_EMPTY",
-] as const satisfies readonly MessageCode[];
-
+// DB 오류를 code 로 바꾼다. RLS 거절은 FORBIDDEN.
 export function codeFromDbError(error: { code?: string; message?: string } | null): MessageCode {
   if (!error) return "UNKNOWN";
-  const named = DB_CODES.find((c) => error.message?.includes(c));
-  if (named) return named;
   if (error.code === "42501") return "FORBIDDEN"; // RLS·권한
   if (error.code === "23505") return "DUPLICATE"; // 고유키
   if (error.code === "23514") return "INVALID_INPUT"; // CHECK 제약
+  if (error.code === "23503") return "IN_USE"; // 다른 표가 쓰고 있음(FK)
   return "UNKNOWN";
 }

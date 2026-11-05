@@ -6,34 +6,26 @@ import { fail, type Failure } from "@/shared/lib/result";
 
 export type Member = {
   id: number;
-  userId: string;
-  role: "husband" | "wife";
-  displayName: string;
+  email: string;
   isAdmin: boolean;
 };
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
-export type MemberContext = { supabase: Supabase; me: Member; partner: Member | null };
+export type MemberContext = { supabase: Supabase; me: Member };
 
 // 한 요청 안에서 한 번만 읽는다(React cache).
 const loadContext = cache(async (): Promise<{ supabase: Supabase; uid: string | null; ctx: MemberContext | null }> => {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const uid = data?.claims?.sub ?? null;
+  const email = (data?.claims?.email as string | undefined)?.toLowerCase();
   if (!uid) return { supabase, uid: null, ctx: null };
 
-  // 회원이 아니면 RLS 가 member 를 0행으로 돌려준다.
-  const { data: rows } = await supabase.from("member").select("id, user_id, role, display_name, is_admin");
-  const members: Member[] = (rows ?? []).map((m) => ({
-    id: Number(m.id),
-    userId: m.user_id,
-    role: m.role,
-    displayName: m.display_name,
-    isAdmin: m.is_admin,
-  }));
-  const me = members.find((m) => m.userId === uid);
-  if (!me) return { supabase, uid, ctx: null };
-  return { supabase, uid, ctx: { supabase, me, partner: members.find((m) => m.id !== me.id) ?? null } };
+  // 회원이 아니면 RLS 가 member 를 0행으로 돌려준다. 회원 판정의 기준은 DB(app.current_member_id)다.
+  const { data: rows } = await supabase.from("member").select("id, email, is_admin");
+  const row = (rows ?? []).find((m) => m.email === email);
+  if (!row) return { supabase, uid, ctx: null };
+  return { supabase, uid, ctx: { supabase, me: { id: Number(row.id), email: row.email, isAdmin: row.is_admin } } };
 });
 
 // 서버 액션 첫 줄: const auth = await requireMember(); if (!auth.ok) return auth;
