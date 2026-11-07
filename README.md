@@ -8,10 +8,11 @@
 
 ## 화면 (아래 탭)
 
-- **기록** (`/log`) — 하루 기록 입력. 농장: 입병·접종·배양 오염(병 수), 메모 / 호실별: 정품·불량 kg, 온도·습도
-- **목록** (`/list`) — 날짜별 기록 목록
-- **분석** (`/stats`) — 1주·1달·3달·6달·1년 기간별 수확량·불량률 추이
-- **더보기** (`/more`) — 호실 관리(`/more/rooms`), 계정 관리(`/more/members`), 푸시 설정
+- **기록** (`/log`) — 하루 기록 입력. 켜진 농장 항목 → 호실마다 호실 항목 → 메모
+- **목록** (`/list`) — 달력(그날 수확·경고 표시) + 달 합계
+- **분석** (`/stats`) — 기간별 기본 지표(수확·불량률·오염률·병당 수확), 항목별 요약 카드와 추이, 호실 비교
+- **더보기** (`/more`) — 관리: 농장 정보(`/more/farm`), 입력 항목(`/more/fields`), 호실(`/more/rooms`), 계정(`/more/members`), 푸시 설정
+  - 농장 정보·입력 항목은 회원도 볼 수 있고 바꾸기는 관리자만
 
 ## 스택
 
@@ -26,7 +27,7 @@
 
 ```
 src/app/        라우트만
-src/features/   기능별 코드 (farm-log, room, analysis, member, push)
+src/features/   기능별 코드 (farm-log, field, farm-setting, analysis, calendar, room, member, push)
 src/shared/     공통 UI·라이브러리·문구
 supabase/       마이그레이션·DB 테스트
 docs/           decisions.md(결정), design.md(화면 규칙)
@@ -67,10 +68,12 @@ npm run db:types   # Supabase 타입 다시 생성 (supabase link 필요)
 이 앱의 표·public 함수는 모두 `mf_` 로 시작합니다. 접두사 없는 표는 이 앱 것이 아닙니다.
 
 - **mf_member** — 로그인할 수 있는 구글 이메일, `is_admin`(관리자 한 명)
+- **mf_farm_setting** — 농장 설정 한 줄(이름·품종·분석 기본 기간·하루 목표·경고 기준)
+- **mf_field** · **mf_field_option** — 입력 항목(농장/호실, 정수·소수·선택·글, 범위·경고·분석 표시)과 선택형 보기. 기본 7항목은 `role` 이 붙어 지울 수 없음
 - **mf_room** — 수확 호실. 기록이 있으면 지우지 못하고 `is_active=false` 로 둡니다
-- **mf_daily_log** — 날짜별 농장 기록(입병·접종·오염 병 수, 메모). `null` = 안 적음
-- **mf_room_log** — 날짜×호실 기록(정품·불량 kg, 온도, 습도)
+- **mf_value** — 값 한 칸(날짜·항목·호실). 값이 없으면 행이 없음(0 과 다름)
+- **mf_day** — 하루 메모
 - **mf_push_subscription** · **mf_if_push_subscription** · **mf_push_log** — 푸시 구독·발송 기록
-- DB 함수: `mf_save_day`, `mf_delete_day`, `mf_farm_days`, `mf_room_totals`, `app.current_member_id()`, `app.is_admin()`
+- DB 함수: `mf_save_day`, `mf_delete_day`, `mf_farm_days`, `mf_room_totals`, `app.current_member_id()`, `app.is_admin()`, 트리거 `app.mf_field_guard`·`app.mf_value_check`
 
-정의: `supabase/migrations/20261105100000_mushroom_core.sql`, `20261107120000_mf_prefix.sql`
+정의: `supabase/migrations/20261105100000_mushroom_core.sql`, `20261107120000_mf_prefix.sql`, `20261107130000_mf_fields.sql`

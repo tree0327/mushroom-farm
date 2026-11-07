@@ -15,6 +15,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -56,6 +57,7 @@
   --accent: oklch(0.94 0.025 60);              /* 목록 달력의 기록 있는 날 */
   --accent-foreground: oklch(0.32 0.05 50);
   --destructive: oklch(0.55 0.2 27);
+  --warning: oklch(0.52 0.13 60);            /* 경고 범위를 벗어난 값(항목 설정의 경고 범위) */
   --border: oklch(0.91 0 0);
   --input: oklch(0.88 0 0);
   --ring: oklch(0.45 0.08 50);

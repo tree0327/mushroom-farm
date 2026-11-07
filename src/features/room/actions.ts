@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireMember } from "@/shared/lib/member";
 import { codeFromDbError, fail, okVoid, type Result } from "@/shared/lib/result";
+import { swapOrder } from "@/shared/lib/reorder";
 
 const nameInput = z.string().trim().min(1).max(20);
 const idInput = z.number().int().positive();
@@ -65,13 +66,9 @@ export async function moveRoom(id: number, direction: "up" | "down"): Promise<Re
   if (!auth.ok) return auth;
   const { data: rooms, error } = await auth.supabase.from("mf_room").select("id, sort_order").order("sort_order").order("id");
   if (error) return roomError(error);
-  const i = (rooms ?? []).findIndex((r) => Number(r.id) === id);
-  const j = direction === "up" ? i - 1 : i + 1;
-  if (i < 0 || !rooms || j < 0 || j >= rooms.length) return okVoid();
-
   // 순서 값이 같은 호실이 있어도 바뀌게 목록 위치로 다시 매긴다
-  const order = rooms.map((r) => Number(r.id));
-  [order[i], order[j]] = [order[j], order[i]];
+  const order = swapOrder((rooms ?? []).map((r) => Number(r.id)), id, direction);
+  if (!order) return okVoid();
   for (const [k, roomId] of order.entries()) {
     const { error: e } = await auth.supabase.from("mf_room").update({ sort_order: k + 1 }).eq("id", roomId);
     if (e) return roomError(e);

@@ -36,6 +36,13 @@ export async function requireMember(): Promise<Failure | ({ ok: true } & MemberC
   return { ok: true, ...ctx };
 }
 
+// 설정 바꾸기 첫 줄: 관리자가 아니면 바로 거절(실제 차단은 DB RLS)
+export async function requireAdmin(): Promise<Failure | ({ ok: true } & MemberContext)> {
+  const auth = await requireMember();
+  if (auth.ok && !auth.me.isAdmin) return fail("ADMIN_ONLY");
+  return auth;
+}
+
 // 화면(서버 컴포넌트)용: 로그인 안 했거나 회원이 아니면 로그인 화면으로.
 export async function getMemberOrRedirect(): Promise<MemberContext> {
   const { uid, ctx } = await loadContext();

@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  buckets,
-  dayCount,
-  inRange,
-  periodRange,
-  previousRange,
-  rankRooms,
-  summarize,
-  type DayRow,
-} from "@/features/analysis/stats";
+import { dayCount, inRange, periodRange, previousRange } from "@/features/analysis/lib/period";
+import { rankRooms, summarize, toDayRow, toRoomTotals, type DayRow } from "@/features/analysis/lib/metrics";
+import { buckets } from "@/features/analysis/lib/buckets";
 
 const day = (date: string, v: Partial<Omit<DayRow, "date">> = {}): DayRow => ({
   date,
@@ -140,6 +133,32 @@ describe("호실별 비교", () => {
     expect(r.map((x) => [x.name, x.harvest, x.defectRate])).toEqual([
       ["2호실", 200, null],
       ["1호실", 110, 10 / 110],
+    ]);
+  });
+});
+
+describe("기본 항목 role → 지표 입력", () => {
+  const roles = { bottled: 1, good: 4, defect: 5 };
+  it("하루 합계에서 role 항목의 합만 꺼낸다(없는 role 은 null)", () => {
+    const row = toDayRow({ date: "2026-10-01", hasMemo: false, totals: { 1: { sum: 1000, min: 1000, max: 1000, n: 1, opts: {} }, 4: { sum: 150.5, min: 50.5, max: 100, n: 2, opts: {} } } }, roles);
+    expect(row).toEqual({ date: "2026-10-01", bottled: 1000, inoculated: null, contaminated: null, good: 150.5, defect: null });
+  });
+  it("호실·항목 합계 → 호실별 정품·불량", () => {
+    const r = toRoomTotals(
+      [
+        { roomId: 1, fieldId: 4, sum: 100, n: 1 },
+        { roomId: 1, fieldId: 5, sum: 10, n: 1 },
+        { roomId: 2, fieldId: 4, sum: 50.5, n: 1 },
+      ],
+      [
+        { id: 1, name: "1호실", isActive: true },
+        { id: 2, name: "2호실", isActive: true },
+      ],
+      roles,
+    );
+    expect(r).toEqual([
+      { roomId: 1, name: "1호실", isActive: true, good: 100, defect: 10 },
+      { roomId: 2, name: "2호실", isActive: true, good: 50.5, defect: null },
     ]);
   });
 });

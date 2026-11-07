@@ -88,7 +88,8 @@ describe("부부 일기 지우기 · 매출 남기기", () => {
       `select table_name as t from information_schema.tables where table_schema = 'public' order by 1`,
     );
     expect(r.rows.map((x) => x.t)).toEqual([
-      "mf_daily_log", "mf_if_push_subscription", "mf_member", "mf_push_log", "mf_push_subscription", "mf_room", "mf_room_log", "sales_record",
+      "mf_day", "mf_farm_setting", "mf_field", "mf_field_option", "mf_if_push_subscription", "mf_member", "mf_push_log", "mf_push_subscription",
+      "mf_room", "mf_value", "sales_record",
     ]);
   });
 
@@ -131,11 +132,6 @@ describe("회원 판정 — 구글 계정 이메일", () => {
     expect(await count(STRANGER, "sales_record")).toBe(0);
   });
 
-  it("등록 안 된 계정은 기록을 못 쓴다", async () => {
-    expect(await errorCode(STRANGER, `insert into public.mf_daily_log (log_date, bottled_count) values ('2026-11-01', 1)`)).toBe("42501");
-    expect(await errorCode(STRANGER, `select public.mf_save_day('2026-11-01', 1, null, null, '', '[]')`)).toBe("42501");
-  });
-
   it("관리자가 계정을 더하면 그 계정이 들어온다", async () => {
     expect(await errorCode(ADMIN, `insert into public.mf_member (email) values ('worker@farm.kr')`)).toBeNull();
     expect(await count(WORKER, "mf_room")).toBe(2);
@@ -160,80 +156,228 @@ describe("회원 판정 — 구글 계정 이메일", () => {
   });
 });
 
+// 기본 항목 id(role → id)
+let F: Record<string, number>;
+const val = (field: number, room: number | null, v: { num?: number | string; option?: number; text?: string }) =>
+  JSON.stringify({ field_id: field, room_id: room, num_value: v.num ?? null, option_id: v.option ?? null, text_value: v.text ?? null });
+const save = (date: string, memo: string, values: string[]) => `select public.mf_save_day('${date}', '${memo}', '[${values.join(",")}]')`;
+const numOf = async (date: string, field: number, room: number | null) =>
+  (
+    await db.query<{ v: string | null }>(
+      `select num_value::text as v from public.mf_value where log_date = '${date}' and field_id = ${field} and room_id is not distinct from ${room ?? "null"}`,
+    )
+  ).rows.map((r) => r.v);
+
+describe("기본 항목 · 농장 설정", () => {
+  beforeAll(async () => {
+    const r = await db.query<{ role: string; id: number }>(`select role, id from public.mf_field where role is not null`);
+    F = Object.fromEntries(r.rows.map((x) => [x.role, Number(x.id)]));
+  });
+
+  it("기본 7항목과 설정 한 줄이 있다", async () => {
+    expect(Object.keys(F).sort()).toEqual(["bottled", "contaminated", "defect", "good", "humidity", "inoculated", "temperature"]);
+    expect(await count(WORKER, "mf_farm_setting")).toBe(1);
+  });
+
+  it("회원은 항목·설정을 읽지만 바꾸지 못한다(관리자만)", async () => {
+    expect(await count(WORKER, "mf_field")).toBe(7);
+    expect(await errorCode(WORKER, `insert into public.mf_field (scope, name, value_type) values ('farm', '물 준 횟수', 'int')`)).toBe("42501");
+    await asUser(WORKER, (tx) => tx.exec(`update public.mf_farm_setting set farm_name = '몰래'`));
+    await asUser(WORKER, (tx) => tx.exec(`update public.mf_field set name = '몰래' where id = ${F.bottled}`));
+    const s = await db.query<{ farm_name: string }>(`select farm_name from public.mf_farm_setting`);
+    expect(s.rows[0].farm_name).toBe("");
+    const f = await db.query<{ name: string }>(`select name from public.mf_field where id = ${F.bottled}`);
+    expect(f.rows[0].name).toBe("입병");
+    expect(await count(STRANGER, "mf_field")).toBe(0);
+  });
+
+  it("관리자는 설정과 기본 항목 이름·범위·켜기를 바꾼다", async () => {
+    expect(await errorCode(ADMIN, `update public.mf_farm_setting set farm_name = '버섯농장', default_period = '3m', defect_rate_warn_pct = 5`)).toBeNull();
+    expect(await errorCode(ADMIN, `update public.mf_field set name = '입병 수', warn_max = 2000, is_active = true where id = ${F.bottled}`)).toBeNull();
+    expect(await errorCode(ADMIN, `update public.mf_farm_setting set default_period = '2y'`)).toBe("23514");
+  });
+
+  it("기본 항목은 지우거나 종류·범위(scope)·역할을 바꾸지 못한다", async () => {
+    expect(await count(ADMIN, "mf_field")).toBe(7);
+    await asUser(ADMIN, (tx) => tx.exec(`delete from public.mf_field where id = ${F.good}`)); // RLS: role 있는 행은 안 보임 → 0행
+    expect(await count(ADMIN, "mf_field")).toBe(7);
+    expect(await errorCode(ADMIN, `update public.mf_field set value_type = 'int' where id = ${F.good}`)).toBe("23514");
+    expect(await errorCode(ADMIN, `update public.mf_field set scope = 'farm' where id = ${F.good}`)).toBe("23514");
+    expect(await errorCode(ADMIN, `update public.mf_field set role = null where id = ${F.good}`)).toBe("23514");
+    expect(await errorCode(ADMIN, `insert into public.mf_field (scope, role, name, value_type) values ('farm', 'good', '가짜', 'int')`)).toBe("42501");
+  });
+
+  it("숫자가 아닌 항목에는 범위·합계를 붙이지 못한다", async () => {
+    expect(await errorCode(ADMIN, `insert into public.mf_field (scope, name, value_type, min_value) values ('farm', '상태', 'choice', 0)`)).toBe("23514");
+    expect(await errorCode(ADMIN, `insert into public.mf_field (scope, name, value_type, summary) values ('farm', '메모2', 'text', 'sum')`)).toBe("23514");
+  });
+});
+
 describe("하루 저장 — mf_save_day", () => {
-  const rooms = (good: string, defect: string, temp = "null", hum = "null") =>
-    `'[{"room_id":${room1},"good_kg":${good},"defect_kg":${defect},"temperature_c":${temp},"humidity_pct":${hum}}]'`;
-
   it("저장하고 다시 저장하면 덮어쓴다(같은 날 두 줄이 안 생긴다)", async () => {
-    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_save_day('2026-11-05', 1200, 1100, 5, '메모', ${rooms("120.5", "8", "17.5", "90")})`));
-    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_save_day('2026-11-05', 1300, 1100, 5, '메모', ${rooms("121", "8")})`));
-    const d = await db.query(`select bottled_count, memo from public.mf_daily_log where log_date = '2026-11-05'`);
-    expect(d.rows).toEqual([{ bottled_count: 1300, memo: "메모" }]);
-    const r = await db.query<{ good_kg: string; temperature_c: string | null }>(
-      `select good_kg::text, temperature_c::text from public.mf_room_log where log_date = '2026-11-05'`,
+    await asUser(ADMIN, (tx) =>
+      tx.exec(save("2026-11-05", "메모", [val(F.bottled, null, { num: 1200 }), val(F.good, room1, { num: 120.5 }), val(F.temperature, room1, { num: 17.5 })])),
     );
-    expect(r.rows).toEqual([{ good_kg: "121.0", temperature_c: null }]);
+    await asUser(ADMIN, (tx) =>
+      tx.exec(save("2026-11-05", "메모", [val(F.bottled, null, { num: 1300 }), val(F.good, room1, { num: 121 }), val(F.temperature, room1, {})])),
+    );
+    expect(await numOf("2026-11-05", F.bottled, null)).toEqual(["1300"]);
+    expect(await numOf("2026-11-05", F.good, room1)).toEqual(["121"]);
+    expect(await numOf("2026-11-05", F.temperature, room1)).toEqual([]);
+    expect((await db.query(`select memo from public.mf_day where log_date = '2026-11-05'`)).rows).toEqual([{ memo: "메모" }]);
   });
 
-  it("빈칸은 null, 0 은 0 으로 남는다", async () => {
-    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_save_day('2026-11-04', 0, null, null, '', '[]')`));
-    const d = await db.query(`select bottled_count, inoculated_count from public.mf_daily_log where log_date = '2026-11-04'`);
-    expect(d.rows).toEqual([{ bottled_count: 0, inoculated_count: null }]);
+  it("빈칸은 행이 없고, 0 은 0 으로 남는다", async () => {
+    await asUser(ADMIN, (tx) => tx.exec(save("2026-11-04", "", [val(F.bottled, null, { num: 0 }), val(F.inoculated, null, {})])));
+    expect(await numOf("2026-11-04", F.bottled, null)).toEqual(["0"]);
+    expect(await numOf("2026-11-04", F.inoculated, null)).toEqual([]);
   });
 
-  it("칸이 모두 비면 그 날 행을 지운다", async () => {
-    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_save_day('2026-11-05', null, null, null, '  ', ${rooms("null", "null")})`));
-    expect((await db.query(`select 1 from public.mf_daily_log where log_date = '2026-11-05'`)).rows).toHaveLength(0);
-    expect((await db.query(`select 1 from public.mf_room_log where log_date = '2026-11-05'`)).rows).toHaveLength(0);
+  it("칸과 메모가 모두 비면 그 날 행을 지운다", async () => {
+    await asUser(ADMIN, (tx) => tx.exec(save("2026-11-05", "  ", [val(F.bottled, null, {}), val(F.good, room1, {})])));
+    expect((await db.query(`select 1 from public.mf_value where log_date = '2026-11-05'`)).rows).toHaveLength(0);
+    expect((await db.query(`select 1 from public.mf_day where log_date = '2026-11-05'`)).rows).toHaveLength(0);
   });
 
-  it("음수·습도 101·영하 21도는 거절하고, 거절되면 아무것도 저장되지 않는다", async () => {
-    expect(await errorCode(ADMIN, `select public.mf_save_day('2026-11-03', -1, null, null, '', '[]')`)).toBe("23514");
-    expect(await errorCode(ADMIN, `select public.mf_save_day('2026-11-03', 10, null, null, '', ${rooms("1", "-0.1")})`)).toBe("23514");
-    expect(await errorCode(ADMIN, `select public.mf_save_day('2026-11-03', 10, null, null, '', ${rooms("1", "0", "null", "101")})`)).toBe("23514");
-    expect(await errorCode(ADMIN, `select public.mf_save_day('2026-11-03', 10, null, null, '', ${rooms("1", "0", "-21")})`)).toBe("23514");
-    expect((await db.query(`select 1 from public.mf_daily_log where log_date = '2026-11-03'`)).rows).toHaveLength(0);
+  it("항목 정의에 안 맞는 값은 거절하고, 거절되면 아무것도 저장되지 않는다", async () => {
+    const bad = [
+      val(F.bottled, null, { num: -1 }), // 범위
+      val(F.bottled, null, { num: 1.5 }), // 정수 항목
+      val(F.humidity, room1, { num: 101 }),
+      val(F.temperature, room1, { num: -21 }),
+      val(F.good, null, { num: 1 }), // 호실 항목인데 호실 없음
+      val(F.bottled, room1, { num: 1 }), // 농장 항목인데 호실 있음
+    ];
+    for (const b of bad) expect(await errorCode(ADMIN, save("2026-11-03", "남으면 안 됨", [val(F.inoculated, null, { num: 5 }), b]))).toBe("23514");
+    expect((await db.query(`select 1 from public.mf_value where log_date = '2026-11-03'`)).rows).toHaveLength(0);
+    expect((await db.query(`select 1 from public.mf_day where log_date = '2026-11-03'`)).rows).toHaveLength(0);
+  });
+
+  it("등록 안 된 계정은 기록을 못 쓴다", async () => {
+    // 항목이 RLS 로 안 보여서 트리거가 먼저 막는다(23503). 메모만 보내면 RLS 가 막는다(42501).
+    expect(await errorCode(STRANGER, save("2026-11-01", "", [val(F.bottled, null, { num: 1 })]))).toBe("23503");
+    expect(await errorCode(STRANGER, save("2026-11-01", "몰래", []))).toBe("42501");
+    expect((await db.query(`select 1 from public.mf_value where log_date = '2026-11-01'`)).rows).toHaveLength(0);
   });
 
   it("하루 지우기", async () => {
-    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_save_day('2026-11-02', 10, null, null, '', ${rooms("3", "1")})`));
+    await asUser(ADMIN, (tx) => tx.exec(save("2026-11-02", "메모", [val(F.bottled, null, { num: 10 }), val(F.good, room1, { num: 3 })])));
     await asUser(ADMIN, (tx) => tx.exec(`select public.mf_delete_day('2026-11-02')`));
-    expect((await db.query(`select 1 from public.mf_room_log where log_date = '2026-11-02'`)).rows).toHaveLength(0);
-    expect((await db.query(`select 1 from public.mf_daily_log where log_date = '2026-11-02'`)).rows).toHaveLength(0);
+    expect((await db.query(`select 1 from public.mf_value where log_date = '2026-11-02'`)).rows).toHaveLength(0);
+    expect((await db.query(`select 1 from public.mf_day where log_date = '2026-11-02'`)).rows).toHaveLength(0);
+  });
+});
+
+describe("사용자 항목 — 선택형·글", () => {
+  let mood: number;
+  let note: number;
+  let good: number;
+  let bad: number;
+
+  beforeAll(async () => {
+    await asUser(ADMIN, (tx) =>
+      tx.exec(`
+        insert into public.mf_field (scope, name, value_type) values ('room', '배지 상태', 'choice'), ('farm', '작업', 'text');
+        insert into public.mf_field_option (field_id, label, sort_order)
+          select id, x.label, x.n from public.mf_field, (values ('좋음', 1), ('나쁨', 2)) x (label, n) where name = '배지 상태';
+      `),
+    );
+    const f = await db.query<{ name: string; id: number }>(`select name, id from public.mf_field where role is null`);
+    mood = Number(f.rows.find((r) => r.name === "배지 상태")!.id);
+    note = Number(f.rows.find((r) => r.name === "작업")!.id);
+    const o = await db.query<{ label: string; id: number }>(`select label, id from public.mf_field_option`);
+    good = Number(o.rows.find((r) => r.label === "좋음")!.id);
+    bad = Number(o.rows.find((r) => r.label === "나쁨")!.id);
+  });
+
+  it("선택형은 그 항목의 보기만, 글은 글만 받는다", async () => {
+    expect(await errorCode(ADMIN, save("2026-11-06", "", [val(mood, room1, { option: good }), val(note, null, { text: " 물 줌 " })]))).toBeNull();
+    expect((await db.query(`select text_value from public.mf_value where field_id = ${note}`)).rows).toEqual([{ text_value: "물 줌" }]);
+    expect(await errorCode(ADMIN, save("2026-11-06", "", [val(mood, room1, { num: 1 })]))).toBe("23514");
+    expect(await errorCode(ADMIN, save("2026-11-06", "", [val(F.good, room1, { option: good })]))).toBe("23514");
+    expect(await errorCode(ADMIN, save("2026-11-06", "", [val(note, null, { num: 3 })]))).toBe("23514");
+  });
+
+  it("값이 있는 항목은 종류를 못 바꾸고, 쓰인 보기·항목은 지우지 못한다", async () => {
+    expect(await errorCode(ADMIN, `update public.mf_field set value_type = 'text' where id = ${mood}`)).toBe("23514");
+    expect(await errorCode(ADMIN, `delete from public.mf_field_option where id = ${good}`)).toBe("23503");
+    expect(await errorCode(ADMIN, `delete from public.mf_field where id = ${mood}`)).toBe("23503");
+    expect(await errorCode(ADMIN, `delete from public.mf_field_option where id = ${bad}`)).toBeNull();
+  });
+
+  it("값이 없는 사용자 항목은 지운다", async () => {
+    await asUser(ADMIN, (tx) => tx.exec(`insert into public.mf_field (scope, name, value_type) values ('farm', '지울 항목', 'int')`));
+    expect(await errorCode(ADMIN, `delete from public.mf_field where name = '지울 항목'`)).toBeNull();
+    expect((await db.query(`select 1 from public.mf_field where name = '지울 항목'`)).rows).toHaveLength(0);
+  });
+
+  it("회원은 보기를 더하지 못한다", async () => {
+    expect(await errorCode(WORKER, `insert into public.mf_field_option (field_id, label) values (${mood}, '몰래')`)).toBe("42501");
   });
 });
 
 describe("합계 함수 — mf_farm_days · mf_room_totals", () => {
   beforeAll(async () => {
-    await db.exec(`delete from public.mf_room_log; delete from public.mf_daily_log;`);
+    await db.exec(`delete from public.mf_value; delete from public.mf_day;`);
     await asUser(ADMIN, (tx) =>
-      tx.exec(`
-        select public.mf_save_day('2026-10-01', 1000, 900, 10, '', '[{"room_id":${room1},"good_kg":100,"defect_kg":10},{"room_id":${room2},"good_kg":50.5,"defect_kg":null}]');
-        select public.mf_save_day('2026-10-02', null, null, null, '물 줌', '[]');
-        select public.mf_save_day('2026-10-03', null, null, null, '', '[{"room_id":${room2},"good_kg":null,"defect_kg":null,"temperature_c":18}]');
-      `),
+      tx.exec(
+        [
+          save("2026-10-01", "", [
+            val(F.bottled, null, { num: 1000 }),
+            val(F.good, room1, { num: 100 }),
+            val(F.defect, room1, { num: 10 }),
+            val(F.good, room2, { num: 50.5 }),
+            val(F.temperature, room1, { num: 16 }),
+            val(F.temperature, room2, { num: 18 }),
+          ]),
+          save("2026-10-02", "물 줌", []),
+        ].join(";"),
+      ),
     );
   });
 
-  it("날짜별로 호실 수확을 더하고, 기록 있는 날만 나온다", async () => {
+  it("날짜별로 항목 합계·최소·최대·개수를 내고, 메모만 있는 날도 나온다", async () => {
     const r = await asUser(ADMIN, (tx) =>
-      tx.query(`select log_date::text, bottled_count::int, good_kg::text, defect_kg::text, has_memo from public.mf_farm_days('2026-10-01', '2026-10-31')`),
+      tx.query<{ log_date: string; has_memo: boolean; totals: Record<string, { sum: number; min: number; max: number; n: number }> }>(
+        `select log_date::text, has_memo, totals from public.mf_farm_days('2026-10-01', '2026-10-31')`,
+      ),
     );
-    expect(r.rows).toEqual([
-      { log_date: "2026-10-01", bottled_count: 1000, good_kg: "150.5", defect_kg: "10.0", has_memo: false },
-      { log_date: "2026-10-02", bottled_count: null, good_kg: null, defect_kg: null, has_memo: true },
-      { log_date: "2026-10-03", bottled_count: null, good_kg: null, defect_kg: null, has_memo: false },
+    expect(r.rows.map((x) => [x.log_date, x.has_memo])).toEqual([
+      ["2026-10-01", false],
+      ["2026-10-02", true],
     ]);
+    const t = r.rows[0].totals;
+    expect(t[F.good]).toEqual({ sum: 150.5, min: 50.5, max: 100, n: 2 });
+    expect(t[F.temperature]).toEqual({ sum: 34, min: 16, max: 18, n: 2 });
+    expect(t[F.bottled].sum).toBe(1000);
+    expect(r.rows[1].totals).toEqual({});
   });
 
-  it("호실별 합계", async () => {
+  it("선택형은 보기별 횟수를 낸다", async () => {
+    const mood = Number((await db.query<{ id: number }>(`select id from public.mf_field where name = '배지 상태'`)).rows[0].id);
+    const good = Number((await db.query<{ id: number }>(`select id from public.mf_field_option where label = '좋음'`)).rows[0].id);
+    await asUser(ADMIN, (tx) => tx.exec(save("2026-10-03", "", [val(mood, room1, { option: good }), val(mood, room2, { option: good })])));
     const r = await asUser(ADMIN, (tx) =>
-      tx.query(`select name, good_kg::text, defect_kg::text from public.mf_room_totals('2026-10-01', '2026-10-31')`),
+      tx.query<{ totals: Record<string, { n: number; opts: Record<string, number> }> }>(`select totals from public.mf_farm_days('2026-10-03', '2026-10-03')`),
     );
-    expect(r.rows).toEqual([
-      { name: "1호실", good_kg: "100.0", defect_kg: "10.0" },
-      { name: "2호실", good_kg: "50.5", defect_kg: null },
-    ]);
+    expect(r.rows[0].totals[mood]).toEqual({ n: 2, opts: { [good]: 2 } });
+  });
+
+  it("호실·항목별 합계(숫자만)", async () => {
+    const r = await asUser(ADMIN, (tx) =>
+      tx.query<{ room_id: number; field_id: number; sum_value: string; value_count: number }>(
+        `select room_id, field_id, sum_value::text, value_count::int from public.mf_room_totals('2026-10-01', '2026-10-31') order by room_id, field_id`,
+      ),
+    );
+    expect(r.rows.map((x) => [Number(x.room_id), Number(x.field_id), x.sum_value, x.value_count])).toEqual(
+      [
+        [room1, F.good, "100", 1],
+        [room1, F.defect, "10", 1],
+        [room1, F.temperature, "16", 1],
+        [room2, F.good, "50.5", 1],
+        [room2, F.temperature, "18", 1],
+      ].sort((a, b) => Number(a[0]) - Number(b[0]) || Number(a[1]) - Number(b[1])),
+    );
   });
 
   it("등록 안 된 계정에는 0행", async () => {

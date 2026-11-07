@@ -1,5 +1,5 @@
 // DB 타입. 운영 DB 에 연결되면 `npm run db:types` 로 다시 만들어 이 파일을 덮어쓴다.
-// 그 전까지는 supabase/migrations/20261105100000_mushroom_core.sql·20261107120000_mf_prefix.sql을 보고 손으로 맞춘 것이다(생성기와 같은 모양).
+// 그 전까지는 supabase/migrations/20261105100000_mushroom_core.sql·20261107120000_mf_prefix.sql·20261107130000_mf_fields.sql 을 보고 손으로 맞춘 것이다(생성기와 같은 모양).
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -23,30 +23,56 @@ export type Database = {
     Tables: {
       mf_member: Table<{ id: number; email: string; is_admin: boolean }, "email", "is_admin">;
       mf_room: Table<{ id: number; name: string; sort_order: number; is_active: boolean }, "name", "sort_order" | "is_active">;
-      mf_daily_log: Table<
+      mf_farm_setting: Table<
         {
           id: number;
-          log_date: string;
-          bottled_count: number | null;
-          inoculated_count: number | null;
-          contaminated_count: number | null;
-          memo: string;
+          farm_name: string;
+          crop: string;
+          default_period: "1w" | "1m" | "3m" | "6m" | "1y";
+          target_daily_kg: number | null;
+          defect_rate_warn_pct: number | null;
+          contamination_rate_warn_pct: number | null;
         },
-        "log_date",
-        "bottled_count" | "inoculated_count" | "contaminated_count" | "memo"
+        never,
+        "farm_name" | "crop" | "default_period" | "target_daily_kg" | "defect_rate_warn_pct" | "contamination_rate_warn_pct"
       >;
-      mf_room_log: Table<
+      mf_field: Table<
+        {
+          id: number;
+          scope: "farm" | "room";
+          role: "bottled" | "inoculated" | "contaminated" | "good" | "defect" | "temperature" | "humidity" | null;
+          name: string;
+          value_type: "int" | "decimal" | "choice" | "text";
+          unit: string;
+          min_value: number | null;
+          max_value: number | null;
+          warn_min: number | null;
+          warn_max: number | null;
+          summary: "sum" | "avg" | "none";
+          sort_order: number;
+          is_active: boolean;
+        },
+        "scope" | "name" | "value_type",
+        "role" | "unit" | "min_value" | "max_value" | "warn_min" | "warn_max" | "summary" | "sort_order" | "is_active"
+      >;
+      mf_field_option: Table<
+        { id: number; field_id: number; label: string; sort_order: number; is_active: boolean },
+        "field_id" | "label",
+        "sort_order" | "is_active"
+      >;
+      mf_day: Table<{ id: number; log_date: string; memo: string }, "log_date" | "memo">;
+      mf_value: Table<
         {
           id: number;
           log_date: string;
-          room_id: number;
-          good_kg: number | null;
-          defect_kg: number | null;
-          temperature_c: number | null;
-          humidity_pct: number | null;
+          field_id: number;
+          room_id: number | null;
+          option_id: number | null;
+          num_value: number | null;
+          text_value: string | null;
         },
-        "log_date" | "room_id",
-        "good_kg" | "defect_kg" | "temperature_c" | "humidity_pct"
+        "log_date" | "field_id",
+        "room_id" | "option_id" | "num_value" | "text_value"
       >;
       mf_if_push_subscription: Table<
         { id: number; member_id: number; raw_json: Json; loaded_at: string | null },
@@ -75,32 +101,17 @@ export type Database = {
     Views: Record<string, never>;
     Functions: {
       mf_save_day: {
-        Args: {
-          p_log_date: string;
-          p_bottled_count: number | null;
-          p_inoculated_count: number | null;
-          p_contaminated_count: number | null;
-          p_memo: string;
-          p_rooms: Json;
-        };
+        Args: { p_log_date: string; p_memo: string; p_values: Json };
         Returns: undefined;
       };
       mf_delete_day: { Args: { p_log_date: string }; Returns: undefined };
       mf_farm_days: {
         Args: { p_from: string; p_to: string };
-        Returns: {
-          log_date: string;
-          bottled_count: number | null;
-          inoculated_count: number | null;
-          contaminated_count: number | null;
-          good_kg: number | null;
-          defect_kg: number | null;
-          has_memo: boolean;
-        }[];
+        Returns: { log_date: string; has_memo: boolean; totals: Json }[];
       };
       mf_room_totals: {
         Args: { p_from: string; p_to: string };
-        Returns: { room_id: number; name: string; is_active: boolean; good_kg: number | null; defect_kg: number | null }[];
+        Returns: { room_id: number; field_id: number; sum_value: number; value_count: number }[];
       };
     };
     Enums: Record<string, never>;

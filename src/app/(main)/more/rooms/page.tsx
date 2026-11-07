@@ -1,6 +1,6 @@
 import { PageBody, PageHeader } from "@/shared/components/page-header";
 import { getMemberOrRedirect } from "@/shared/lib/member";
-import { getRooms } from "@/features/farm-log/queries";
+import { getRooms } from "@/features/room/queries";
 import { RoomManager } from "@/features/room/components/room-manager";
 
 export default async function RoomsPage() {

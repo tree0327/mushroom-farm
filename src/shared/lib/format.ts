@@ -6,5 +6,8 @@ const one = new Intl.NumberFormat("ko-KR", { minimumFractionDigits: 1, maximumFr
 export const fmtCount = (n: number | null) => (n === null ? DASH : `${int.format(n)}병`);
 export const fmtKg = (n: number | null) => (n === null ? DASH : `${one.format(n)}kg`);
 export const fmtGrams = (n: number | null) => (n === null ? DASH : `${int.format(n)}g`);
+const upTo2 = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 });
+// 사용자 항목 숫자 + 단위
+export const fmtNum = (n: number | null, unit = "") => (n === null ? DASH : `${upTo2.format(n)}${unit}`);
 // 0~1 비율 → 「2.4%」
 export const fmtPct = (r: number | null) => (r === null ? DASH : `${one.format(r * 100)}%`);

@@ -3,130 +3,55 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
-import { Label } from "@/shared/ui/label";
-import { Textarea } from "@/shared/ui/textarea";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/shared/ui/alert-dialog";
+import { Card, CardContent } from "@/shared/ui/card";
 import { useAction } from "@/shared/hooks/use-action";
 import { messageOf } from "@/shared/messages";
-import { addDays, formatDayLabel } from "@/shared/lib/date";
+import type { Field } from "@/features/field/types";
+import type { Room } from "@/features/room/types";
 import { deleteDay, saveDay } from "@/features/farm-log/actions";
-import type { DayEntry, Room } from "@/features/farm-log/queries";
+import { cellKey, type DayEntry } from "@/features/farm-log/types";
+import { toCell, toDraft } from "@/features/farm-log/lib/value-input";
+import { DayNav } from "@/features/farm-log/components/day-nav";
+import { FieldsCard } from "@/features/farm-log/components/fields-card";
+import { MemoCard } from "@/features/farm-log/components/memo-card";
+import { DeleteDayDialog } from "@/features/farm-log/components/delete-day-dialog";
 
-type Kind = "count" | "kg" | "temperature" | "humidity";
-// 빈칸 = 안 적음(null). 틀린 글자는 undefined 로 돌려 저장을 막는다.
-const PATTERN: Record<Kind, RegExp> = {
-  count: /^\d+$/,
-  kg: /^\d+(\.\d+)?$/,
-  temperature: /^-?\d+(\.\d+)?$/,
-  humidity: /^\d+$/,
-};
-function parse(text: string, kind: Kind): number | null | undefined {
-  const t = text.trim().replace(/,/g, "");
-  if (t === "") return null;
-  return PATTERN[kind].test(t) ? Number(t) : undefined;
-}
-const show = (n: number | null) => (n === null ? "" : String(n));
-
-type RoomText = { good: string; defect: string; temperature: string; humidity: string };
-
-function Field({
-  id,
-  label,
-  unit,
-  kind,
-  value,
-  onChange,
+// 하루 기록 화면: 날짜 → 농장 항목 → 호실마다 호실 항목 → 메모 → 저장
+export function LogEditor({
+  date,
+  today,
+  farmFields,
+  roomFields,
+  rooms,
+  entry,
 }: {
-  id: string;
-  label: string;
-  unit: string;
-  kind: Kind;
-  value: string;
-  onChange: (v: string) => void;
+  date: string;
+  today: string;
+  farmFields: Field[];
+  roomFields: Field[];
+  rooms: Room[];
+  entry: DayEntry;
 }) {
-  const invalid = parse(value, kind) === undefined;
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id} className="text-sm text-muted-foreground">
-        {label}
-      </Label>
-      <div className="relative">
-        <Input
-          id={id}
-          className="h-11 pr-10 text-right text-base tabular-nums"
-          inputMode={kind === "count" || kind === "humidity" ? "numeric" : "decimal"}
-          autoComplete="off"
-          value={value}
-          aria-invalid={invalid || undefined}
-          onChange={(e) => onChange(e.target.value)}
-        />
-        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
-          {unit}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-export function LogEditor({ date, today, rooms, entry }: { date: string; today: string; rooms: Room[]; entry: DayEntry }) {
   const router = useRouter();
   const { pending, run } = useAction();
-  const [bottled, setBottled] = useState(show(entry.bottled));
-  const [inoculated, setInoculated] = useState(show(entry.inoculated));
-  const [contaminated, setContaminated] = useState(show(entry.contaminated));
-  const [memo, setMemo] = useState(entry.memo);
-  const [roomText, setRoomText] = useState<Record<number, RoomText>>(() =>
-    Object.fromEntries(
-      rooms.map((r) => {
-        const v = entry.rooms[r.id];
-        return [
-          r.id,
-          { good: show(v?.good ?? null), defect: show(v?.defect ?? null), temperature: show(v?.temperature ?? null), humidity: show(v?.humidity ?? null) },
-        ];
-      }),
-    ),
+  // 화면에 그리는 모든 칸(항목 × 호실)
+  const slots = [
+    ...farmFields.map((field) => ({ field, roomId: null })),
+    ...rooms.flatMap((r) => roomFields.map((field) => ({ field, roomId: r.id }))),
+  ];
+  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(slots.map((s) => [cellKey(s.field.id, s.roomId), toDraft(entry.cells[cellKey(s.field.id, s.roomId)])])),
   );
+  const [memo, setMemo] = useState(entry.memo);
   const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const hasSaved =
-    entry.bottled !== null || entry.inoculated !== null || entry.contaminated !== null || entry.memo !== "" ||
-    Object.keys(entry.rooms).length > 0;
-
-  const setRoom = (id: number, key: keyof RoomText) => (v: string) =>
-    setRoomText((prev) => ({ ...prev, [id]: { ...prev[id], [key]: v } }));
+  const hasSaved = entry.memo !== "" || Object.keys(entry.cells).length > 0;
+  const setDraft = (key: string, value: string) => setDrafts((prev) => ({ ...prev, [key]: value }));
 
   function save() {
-    const values = {
-      bottled: parse(bottled, "count"),
-      inoculated: parse(inoculated, "count"),
-      contaminated: parse(contaminated, "count"),
-    };
-    const roomValues = rooms.map((r) => {
-      const t = roomText[r.id];
-      return {
-        roomId: r.id,
-        good: parse(t.good, "kg"),
-        defect: parse(t.defect, "kg"),
-        temperature: parse(t.temperature, "temperature"),
-        humidity: parse(t.humidity, "humidity"),
-      };
-    });
-    const all = [...Object.values(values), ...roomValues.flatMap((r) => [r.good, r.defect, r.temperature, r.humidity])];
-    if (all.some((v) => v === undefined)) {
+    const cells = slots.map((s) => ({ ...s, cell: toCell(s.field, drafts[cellKey(s.field.id, s.roomId)] ?? "") }));
+    if (cells.some((c) => c.cell === undefined)) {
       toast.error(messageOf("LOG_INVALID"));
       return;
     }
@@ -134,16 +59,13 @@ export function LogEditor({ date, today, rooms, entry }: { date: string; today: 
       () =>
         saveDay({
           date,
-          bottled: values.bottled ?? null,
-          inoculated: values.inoculated ?? null,
-          contaminated: values.contaminated ?? null,
           memo,
-          rooms: roomValues.map((r) => ({
-            roomId: r.roomId,
-            good: r.good ?? null,
-            defect: r.defect ?? null,
-            temperature: r.temperature ?? null,
-            humidity: r.humidity ?? null,
+          cells: cells.map(({ field, roomId, cell }) => ({
+            fieldId: field.id,
+            roomId,
+            num: cell?.num ?? null,
+            optionId: cell?.optionId ?? null,
+            text: cell?.text ?? null,
           })),
         }),
       { success: "저장했어요", onSuccess: () => router.refresh() },
@@ -154,44 +76,9 @@ export function LogEditor({ date, today, rooms, entry }: { date: string; today: 
 
   return (
     <>
-      <div className="flex items-center justify-between gap-2">
-        <Button variant="ghost" className="size-11" aria-label="전날" onClick={() => go(addDays(date, -1))}>
-          <ChevronLeft className="size-6" aria-hidden />
-        </Button>
-        <label className="relative flex flex-col items-center">
-          <span className="text-lg font-semibold">{formatDayLabel(date)}</span>
-          <span className="text-sm text-muted-foreground">{date === today ? "오늘" : "날짜를 눌러 바꾸기"}</span>
-          {/* 글자 위에 투명한 날짜 칸을 덮어, 누르면 폰 달력이 열린다 */}
-          <input
-            type="date"
-            aria-label="날짜 고르기"
-            className="absolute inset-0 opacity-0"
-            value={date}
-            max={today}
-            onChange={(e) => e.target.value && go(e.target.value)}
-          />
-        </label>
-        <Button
-          variant="ghost"
-          className="size-11"
-          aria-label="다음날"
-          disabled={date >= today}
-          onClick={() => go(addDays(date, 1))}
-        >
-          <ChevronRight className="size-6" aria-hidden />
-        </Button>
-      </div>
+      <DayNav date={date} today={today} go={go} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">배양</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-3 gap-3">
-          <Field id="bottled" label="입병" unit="병" kind="count" value={bottled} onChange={setBottled} />
-          <Field id="inoculated" label="접종" unit="병" kind="count" value={inoculated} onChange={setInoculated} />
-          <Field id="contaminated" label="오염" unit="병" kind="count" value={contaminated} onChange={setContaminated} />
-        </CardContent>
-      </Card>
+      {farmFields.length > 0 && <FieldsCard title="농장" fields={farmFields} roomId={null} drafts={drafts} onChange={setDraft} />}
 
       {rooms.length === 0 ? (
         <Card>
@@ -203,50 +90,21 @@ export function LogEditor({ date, today, rooms, entry }: { date: string; today: 
           </CardContent>
         </Card>
       ) : (
+        roomFields.length > 0 &&
         rooms.map((r) => (
-          <Card key={r.id}>
-            <CardHeader>
-              <CardTitle className="text-lg">
-                {r.name}
-                {!r.isActive && <span className="ml-2 text-sm font-normal text-muted-foreground">안 씀</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3">
-              <Field id={`good-${r.id}`} label="정품 수확" unit="kg" kind="kg" value={roomText[r.id].good} onChange={setRoom(r.id, "good")} />
-              <Field id={`defect-${r.id}`} label="불량 수확" unit="kg" kind="kg" value={roomText[r.id].defect} onChange={setRoom(r.id, "defect")} />
-              <Field
-                id={`temp-${r.id}`}
-                label="온도"
-                unit="℃"
-                kind="temperature"
-                value={roomText[r.id].temperature}
-                onChange={setRoom(r.id, "temperature")}
-              />
-              <Field id={`hum-${r.id}`} label="습도" unit="%" kind="humidity" value={roomText[r.id].humidity} onChange={setRoom(r.id, "humidity")} />
-            </CardContent>
-          </Card>
+          <FieldsCard
+            key={r.id}
+            title={r.name}
+            note={r.isActive ? undefined : "안 씀"}
+            fields={roomFields}
+            roomId={r.id}
+            drafts={drafts}
+            onChange={setDraft}
+          />
         ))
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">
-            <Label htmlFor="memo" className="text-lg">
-              메모
-            </Label>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Textarea
-            id="memo"
-            className="min-h-24 text-base"
-            maxLength={1000}
-            placeholder="그날 특이사항"
-            value={memo}
-            onChange={(e) => setMemo(e.target.value)}
-          />
-        </CardContent>
-      </Card>
+      <MemoCard value={memo} onChange={setMemo} />
 
       <Button className="h-12 text-base" disabled={pending} onClick={save}>
         {pending ? "저장 중…" : "저장"}
@@ -257,39 +115,22 @@ export function LogEditor({ date, today, rooms, entry }: { date: string; today: 
         </Button>
       )}
 
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{formatDayLabel(date)} 기록을 지울까요?</AlertDialogTitle>
-            <AlertDialogDescription>배양·호실·메모가 모두 지워지고 되돌릴 수 없어요.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="h-11">그만두기</AlertDialogCancel>
-            <AlertDialogAction
-              className="h-11"
-              variant="destructive"
-              onClick={() =>
-                run(() => deleteDay(date), {
-                  success: "지웠어요",
-                  onSuccess: () => {
-                    // 화면 칸도 비운다(같은 날짜라 편집기가 새로 만들어지지 않는다)
-                    setBottled("");
-                    setInoculated("");
-                    setContaminated("");
-                    setMemo("");
-                    setRoomText((prev) =>
-                      Object.fromEntries(Object.keys(prev).map((id) => [id, { good: "", defect: "", temperature: "", humidity: "" }])),
-                    );
-                    router.refresh();
-                  },
-                })
-              }
-            >
-              지우기
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteDayDialog
+        date={date}
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        onConfirm={() =>
+          run(() => deleteDay(date), {
+            success: "지웠어요",
+            onSuccess: () => {
+              // 화면 칸도 비운다(같은 날짜라 편집기가 새로 만들어지지 않는다)
+              setDrafts((prev) => Object.fromEntries(Object.keys(prev).map((k) => [k, ""])));
+              setMemo("");
+              router.refresh();
+            },
+          })
+        }
+      />
     </>
   );
 }

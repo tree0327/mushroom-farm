@@ -1,21 +1,20 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { cn } from "cn";
 import { Card, CardContent } from "@/shared/ui/card";
 import { PageBody, PageHeader } from "@/shared/components/page-header";
 import { getMemberOrRedirect } from "@/shared/lib/member";
 import { addDays, kstYmd } from "@/shared/lib/date";
 import { fmtCount, fmtKg, fmtPct } from "@/shared/lib/format";
+import { getFields, roleIds } from "@/features/field/queries";
 import { getFarmDays } from "@/features/farm-log/queries";
-import { summarize } from "@/features/analysis/stats";
-
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+import { summarize, toDayRow } from "@/features/analysis/lib/metrics";
+import { warnDates } from "@/features/analysis/lib/field-summary";
+import { MonthCalendar } from "@/features/calendar/components/month-calendar";
 
 // YYYY-MM 을 n달 옮긴다
 function shiftMonth(ym: string, n: number): string {
   const [y, m] = ym.split("-").map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + n, 1));
-  return d.toISOString().slice(0, 7);
+  return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7);
 }
 
 export default async function ListPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
@@ -27,14 +26,12 @@ export default async function ListPage({ searchParams }: { searchParams: Promise
 
   const first = `${month}-01`;
   const last = addDays(`${shiftMonth(month, 1)}-01`, -1);
-  const days = await getFarmDays(ctx, first, last);
-  const byDate = new Map(days.map((d) => [d.date, d]));
-  const total = summarize(days);
-
-  // 달력 칸: 첫 주 앞을 비우고 1일부터
-  const lead = new Date(`${first}T00:00:00Z`).getUTCDay();
-  const cells: (string | null)[] = [...Array(lead).fill(null)];
-  for (let d = first; d <= last; d = addDays(d, 1)) cells.push(d);
+  const [fields, days] = await Promise.all([getFields(ctx), getFarmDays(ctx, first, last)]);
+  const roles = roleIds(fields);
+  const rows = days.map((d) => toDayRow(d, roles));
+  const warns = warnDates(fields, days);
+  const calendar = new Map(rows.map((r) => [r.date, { harvest: summarize([r]).harvest, warn: warns.has(r.date) }]));
+  const total = summarize(rows);
 
   const [y, m] = month.split("-").map(Number);
   const monthHref = (ym: string) => (ym === thisMonth ? "/list" : `/list?month=${ym}`);
@@ -59,51 +56,7 @@ export default async function ListPage({ searchParams }: { searchParams: Promise
           )}
         </div>
 
-        <Card className="py-3">
-          <CardContent className="px-2">
-            <div className="grid grid-cols-7 text-center text-xs text-muted-foreground">
-              {WEEKDAYS.map((w) => (
-                <div key={w} className="pb-2">
-                  {w}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-y-1">
-              {cells.map((d, i) => {
-                if (!d) return <div key={`blank-${i}`} />;
-                const row = byDate.get(d);
-                const harvest = row ? summarize([row]).harvest : null;
-                const future = d > today;
-                const label = `${Number(d.slice(8))}`;
-                const body = (
-                  <>
-                    <span className={cn("text-sm", d === today && "rounded-full bg-primary px-1.5 font-semibold text-primary-foreground")}>
-                      {label}
-                    </span>
-                    <span className="h-4 text-[11px] leading-4 tabular-nums text-foreground">
-                      {harvest !== null ? harvest.toFixed(1) : row ? "•" : ""}
-                    </span>
-                  </>
-                );
-                return future ? (
-                  <div key={d} className="flex h-14 flex-col items-center gap-0.5 pt-1 text-muted-foreground/60">
-                    {body}
-                  </div>
-                ) : (
-                  <Link
-                    key={d}
-                    href={d === today ? "/log" : `/log?date=${d}`}
-                    aria-label={`${Number(d.slice(5, 7))}월 ${label}일${row ? " 기록 있음" : ""}`}
-                    className={cn("flex h-14 flex-col items-center gap-0.5 rounded-lg pt-1 active:bg-muted", row && "bg-accent")}
-                  >
-                    {body}
-                  </Link>
-                );
-              })}
-            </div>
-            <p className="px-2 pt-3 text-xs text-muted-foreground">칸의 숫자는 그날 수확(정품+불량) kg, 점은 수확 없이 기록만 있는 날이에요.</p>
-          </CardContent>
-        </Card>
+        <MonthCalendar month={month} today={today} days={calendar} />
 
         <Card>
           <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -112,6 +65,7 @@ export default async function ListPage({ searchParams }: { searchParams: Promise
             <Stat label="접종" value={fmtCount(total.inoculated)} />
             <Stat label="수확" value={fmtKg(total.harvest)} />
             <Stat label="불량률" value={fmtPct(total.defectRate)} />
+            {warns.size > 0 && <p className="col-span-2 text-sm text-warning">경고 범위를 벗어난 날 {warns.size}일</p>}
           </CardContent>
         </Card>
       </PageBody>

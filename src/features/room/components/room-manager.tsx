@@ -9,7 +9,7 @@ import { Input } from "@/shared/ui/input";
 import { Switch } from "@/shared/ui/switch";
 import { useAction } from "@/shared/hooks/use-action";
 import { addRoom, deleteRoom, moveRoom, renameRoom, setRoomActive } from "@/features/room/actions";
-import type { Room } from "@/features/farm-log/queries";
+import type { Room } from "@/features/room/types";
 
 export function RoomManager({ rooms }: { rooms: Room[] }) {
   const router = useRouter();

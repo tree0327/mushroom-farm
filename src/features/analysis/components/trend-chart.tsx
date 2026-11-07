@@ -2,23 +2,19 @@
 
 import { useState } from "react";
 import { cn } from "cn";
-import { fmtKg, fmtPct } from "@/shared/lib/format";
-import type { Bucket } from "@/features/analysis/stats";
+import { fmtKg, fmtNum, fmtPct } from "@/shared/lib/format";
 
-// 막대 하나짜리 추이 그래프. 단위가 다른 두 값(수확 kg·불량률)은 축 하나에 겹치지 않고 그래프를 둘로 나눈다.
+export type TrendPoint = { key: string; label: string; value: number | null };
+// 서버 화면이 넘기므로 함수 대신 표시 종류를 받는다
+type TrendFormat = { kind: "kg" } | { kind: "pct" } | { kind: "num"; unit: string };
+const formatter = (f: TrendFormat) => (f.kind === "kg" ? fmtKg : f.kind === "pct" ? fmtPct : (n: number | null) => fmtNum(n, f.unit));
+
+// 막대 하나짜리 추이 그래프. 단위가 다른 값(수확 kg·불량률·항목)은 축 하나에 겹치지 않고 그래프를 나눈다.
 // 막대를 누르거나 올리면 위 줄에 그 칸 값이 나온다. 같은 값은 아래 「표로 보기」에도 있다.
-export function TrendChart({
-  title,
-  buckets,
-  metric,
-}: {
-  title: string;
-  buckets: Bucket[];
-  metric: "harvest" | "defectRate";
-}) {
-  const format = metric === "harvest" ? fmtKg : fmtPct;
+export function TrendChart({ title, points: buckets, format: kind }: { title: string; points: TrendPoint[]; format: TrendFormat }) {
+  const format = formatter(kind);
   const [active, setActive] = useState<number | null>(null);
-  const values = buckets.map((b) => b[metric]);
+  const values = buckets.map((b) => b.value);
   const max = Math.max(0, ...values.map((v) => v ?? 0));
   const W = 320;
   const H = 120;
