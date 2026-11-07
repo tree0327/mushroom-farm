@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   if (error) return NextResponse.redirect(`${origin}/login?e=UNKNOWN`);
 
   // 등록 안 된 계정이면 RLS 가 member 를 0행으로 돌려준다.
-  const { data: rows, error: readError } = await supabase.from("member").select("id").limit(1);
+  const { data: rows, error: readError } = await supabase.from("mf_member").select("id").limit(1);
   if (readError) {
     await supabase.auth.signOut();
     return NextResponse.redirect(`${origin}/login?e=UNKNOWN`);

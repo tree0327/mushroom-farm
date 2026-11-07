@@ -11,7 +11,7 @@ export const PERIODS: { key: Period; label: string }[] = [
 ];
 export const isPeriod = (v: unknown): v is Period => PERIODS.some((p) => p.key === v);
 
-// 하루 합계(DB farm_days 한 줄). null = 그날 그 칸을 안 적음.
+// 하루 합계(DB mf_farm_days 한 줄). null = 그날 그 칸을 안 적음.
 export type DayRow = {
   date: string;
   bottled: number | null;
@@ -91,8 +91,8 @@ export const inRange = (rows: DayRow[], { from, to }: Range) => rows.filter((r) 
 
 // 추이 그래프 묶음: 1주·1달은 일별, 3·6달은 주별(월요일 시작), 1년은 월별
 export type Bucket = { key: string; label: string; harvest: number | null; defectRate: number | null };
-export type BucketUnit = "day" | "week" | "month";
-export const bucketUnit = (period: Period): BucketUnit =>
+type BucketUnit = "day" | "week" | "month";
+const bucketUnit = (period: Period): BucketUnit =>
   period === "1w" || period === "1m" ? "day" : period === "1y" ? "month" : "week";
 
 function bucketKey(ymd: string, unit: BucketUnit): string {

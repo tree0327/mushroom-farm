@@ -1,6 +1,6 @@
 // 문구 대장 — 화면에 보이는 거절·안내 문구는 모두 여기 있다. 서버는 code 만 준다.
 // 말투: 「~했어요 / ~해 주세요」 (docs/design.md 5절)
-export const MESSAGES = {
+const MESSAGES = {
   UNKNOWN: "잠시 문제가 생겼어요. 다시 해 주세요.",
   UNAUTHENTICATED: "로그인이 풀렸어요. 다시 로그인해 주세요.",
   NOT_MEMBER: "등록된 계정이 아니에요. 관리자에게 이메일 등록을 부탁해 주세요.",
@@ -21,11 +21,6 @@ export const MESSAGES = {
 
   ROOM_GONE: "지워진 호실이 있어요. 화면을 새로고침해 주세요.",
   LOG_INVALID: "숫자를 다시 확인해 주세요. 병 수는 0 이상 정수, 습도는 0~100이에요.",
-
-  // 매출(앱에서 들어가는 길은 없앴다 — src/features/sales 를 다시 붙일 때 쓴다)
-  SALES_AMOUNT: "금액을 입력해 주세요.",
-  SALES_FUTURE: "오늘 이후 날짜는 고를 수 없어요.",
-  SALES_NOT_FOUND: "이미 지워진 기록이에요.",
 
   PUSH_UNSUPPORTED: "이 기기에서는 알림을 켤 수 없어요. 홈 화면에 추가한 앱에서 켜 주세요.",
   PUSH_DENIED: "알림이 꺼져 있어요. 아이폰 설정 › 알림에서 이 앱을 켜 주세요.",

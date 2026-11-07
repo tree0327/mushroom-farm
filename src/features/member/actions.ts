@@ -37,7 +37,7 @@ export async function addMember(email: string): Promise<Result> {
   const parsed = emailInput.safeParse(email);
   if (!parsed.success) return fail("EMAIL_INVALID");
 
-  const { error } = await auth.supabase.from("member").insert({ email: parsed.data });
+  const { error } = await auth.supabase.from("mf_member").insert({ email: parsed.data });
   if (error) return fail(error.code === "23505" ? "EMAIL_DUPLICATE" : codeFromDbError(error));
   revalidatePath("/more/members");
   return okVoid();
@@ -49,7 +49,7 @@ export async function removeMember(id: number): Promise<Result> {
   if (!auth.me.isAdmin) return fail("ADMIN_ONLY");
   if (id === auth.me.id) return fail("MEMBER_SELF");
 
-  const { data, error } = await auth.supabase.from("member").delete().eq("id", id).select("id");
+  const { data, error } = await auth.supabase.from("mf_member").delete().eq("id", id).select("id");
   if (error) return fail(codeFromDbError(error));
   if (!data || data.length === 0) return fail("NOT_FOUND");
   revalidatePath("/more/members");

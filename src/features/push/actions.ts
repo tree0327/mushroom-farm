@@ -22,7 +22,7 @@ export async function subscribePush(raw: unknown): Promise<Result> {
   const { supabase, me } = auth;
 
   const { data: rawRow, error: rawError } = await supabase
-    .from("if_push_subscription")
+    .from("mf_if_push_subscription")
     .insert({ member_id: me.id, raw_json: (raw ?? null) as Json })
     .select("id")
     .single();
@@ -34,13 +34,13 @@ export async function subscribePush(raw: unknown): Promise<Result> {
   // 같은 폰에서 다른 사람으로 로그인해 알림을 켜면, 그 폰 주소를 이 사람에게 넘긴다.
   // 남의 행이라 RLS 로는 못 바꾸니 비밀 키로 지운다. 주소(endpoint)는 그 폰 브라우저만 알아서 가로챌 수 없다.
   const { error: moveError } = await createAdminClient()
-    .from("push_subscription")
+    .from("mf_push_subscription")
     .delete()
     .eq("endpoint", sub.data.endpoint)
     .neq("member_id", me.id);
   if (moveError) return fail(codeFromDbError(moveError));
 
-  const { error } = await supabase.from("push_subscription").upsert(
+  const { error } = await supabase.from("mf_push_subscription").upsert(
     {
       endpoint: sub.data.endpoint,
       member_id: me.id,
@@ -52,7 +52,7 @@ export async function subscribePush(raw: unknown): Promise<Result> {
   );
   if (error) return fail(codeFromDbError(error));
 
-  await supabase.from("if_push_subscription").update({ loaded_at: new Date().toISOString() }).eq("id", rawRow.id);
+  await supabase.from("mf_if_push_subscription").update({ loaded_at: new Date().toISOString() }).eq("id", rawRow.id);
   return ok(undefined);
 }
 

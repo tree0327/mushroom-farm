@@ -6,7 +6,7 @@ import { MemberManager } from "@/features/member/components/member-manager";
 export default async function MembersPage() {
   const { supabase, me } = await getMemberOrRedirect();
   if (!me.isAdmin) redirect("/more");
-  const { data, error } = await supabase.from("member").select("id, email, is_admin").order("is_admin", { ascending: false }).order("email");
+  const { data, error } = await supabase.from("mf_member").select("id, email, is_admin").order("is_admin", { ascending: false }).order("email");
   if (error) throw error;
   return (
     <>

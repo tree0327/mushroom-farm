@@ -129,7 +129,7 @@ export function PushSettings() {
 }
 
 // 아이폰 홈 화면 추가 안내 (R15)
-export function InstallGuide() {
+function InstallGuide() {
   return (
     <ol className="flex flex-col gap-3 text-base">
       <li className="flex items-start gap-3">

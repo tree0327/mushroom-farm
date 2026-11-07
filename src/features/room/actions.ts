@@ -27,12 +27,12 @@ export async function addRoom(name: string): Promise<Result> {
 
   // 새 호실은 맨 뒤
   const { data: last } = await auth.supabase
-    .from("room")
+    .from("mf_room")
     .select("sort_order")
     .order("sort_order", { ascending: false })
     .limit(1);
   const { error } = await auth.supabase
-    .from("room")
+    .from("mf_room")
     .insert({ name: parsed.data, sort_order: (last?.[0]?.sort_order ?? 0) + 1 });
   if (error) return roomError(error);
   return done();
@@ -43,7 +43,7 @@ export async function renameRoom(id: number, name: string): Promise<Result> {
   if (!auth.ok) return auth;
   const parsed = nameInput.safeParse(name);
   if (!parsed.success || !idInput.safeParse(id).success) return fail("ROOM_NAME");
-  const { data, error } = await auth.supabase.from("room").update({ name: parsed.data }).eq("id", id).select("id");
+  const { data, error } = await auth.supabase.from("mf_room").update({ name: parsed.data }).eq("id", id).select("id");
   if (error) return roomError(error);
   if (!data?.length) return fail("NOT_FOUND");
   return done();
@@ -53,7 +53,7 @@ export async function setRoomActive(id: number, isActive: boolean): Promise<Resu
   const auth = await requireMember();
   if (!auth.ok) return auth;
   if (!idInput.safeParse(id).success) return fail("INVALID_INPUT");
-  const { data, error } = await auth.supabase.from("room").update({ is_active: isActive }).eq("id", id).select("id");
+  const { data, error } = await auth.supabase.from("mf_room").update({ is_active: isActive }).eq("id", id).select("id");
   if (error) return roomError(error);
   if (!data?.length) return fail("NOT_FOUND");
   return done();
@@ -63,7 +63,7 @@ export async function setRoomActive(id: number, isActive: boolean): Promise<Resu
 export async function moveRoom(id: number, direction: "up" | "down"): Promise<Result> {
   const auth = await requireMember();
   if (!auth.ok) return auth;
-  const { data: rooms, error } = await auth.supabase.from("room").select("id, sort_order").order("sort_order").order("id");
+  const { data: rooms, error } = await auth.supabase.from("mf_room").select("id, sort_order").order("sort_order").order("id");
   if (error) return roomError(error);
   const i = (rooms ?? []).findIndex((r) => Number(r.id) === id);
   const j = direction === "up" ? i - 1 : i + 1;
@@ -73,7 +73,7 @@ export async function moveRoom(id: number, direction: "up" | "down"): Promise<Re
   const order = rooms.map((r) => Number(r.id));
   [order[i], order[j]] = [order[j], order[i]];
   for (const [k, roomId] of order.entries()) {
-    const { error: e } = await auth.supabase.from("room").update({ sort_order: k + 1 }).eq("id", roomId);
+    const { error: e } = await auth.supabase.from("mf_room").update({ sort_order: k + 1 }).eq("id", roomId);
     if (e) return roomError(e);
   }
   return done();
@@ -83,7 +83,7 @@ export async function deleteRoom(id: number): Promise<Result> {
   const auth = await requireMember();
   if (!auth.ok) return auth;
   if (!idInput.safeParse(id).success) return fail("INVALID_INPUT");
-  const { data, error } = await auth.supabase.from("room").delete().eq("id", id).select("id");
+  const { data, error } = await auth.supabase.from("mf_room").delete().eq("id", id).select("id");
   if (error) return roomError(error);
   if (!data?.length) return fail("NOT_FOUND");
   return done();

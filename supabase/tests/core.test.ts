@@ -75,9 +75,9 @@ beforeAll(async () => {
       ('${IMPOSTOR}', 'app@bibimble.com');
     insert into auth.identities (user_id, provider) values
       ('${ADMIN}', 'google'), ('${WORKER}', 'google'), ('${STRANGER}', 'google'), ('${IMPOSTOR}', 'email');
-    insert into public.room (name, sort_order) values ('1호실', 1), ('2호실', 2);
+    insert into public.mf_room (name, sort_order) values ('1호실', 1), ('2호실', 2);
   `);
-  const rooms = await db.query<{ id: number }>(`select id from public.room order by sort_order`);
+  const rooms = await db.query<{ id: number }>(`select id from public.mf_room order by sort_order`);
   room1 = Number(rooms.rows[0].id);
   room2 = Number(rooms.rows[1].id);
 }, 60_000);
@@ -88,8 +88,20 @@ describe("부부 일기 지우기 · 매출 남기기", () => {
       `select table_name as t from information_schema.tables where table_schema = 'public' order by 1`,
     );
     expect(r.rows.map((x) => x.t)).toEqual([
-      "daily_log", "if_push_subscription", "member", "push_log", "push_subscription", "room", "room_log", "sales_record",
+      "mf_daily_log", "mf_if_push_subscription", "mf_member", "mf_push_log", "mf_push_subscription", "mf_room", "mf_room_log", "sales_record",
     ]);
+  });
+
+  it("mf_ 표의 제약·인덱스·정책·트리거·시퀀스·함수 이름도 mf_ 로 시작한다", async () => {
+    const r = await db.query<{ name: string }>(`
+      select conname as name from pg_constraint where conrelid::regclass::text like 'mf\\_%'
+      union all select indexname from pg_indexes where schemaname = 'public' and tablename like 'mf\\_%'
+      union all select policyname from pg_policies where schemaname = 'public' and tablename like 'mf\\_%'
+      union all select tgname from pg_trigger where tgrelid::regclass::text like 'mf\\_%' and not tgisinternal
+      union all select relname from pg_class where relkind = 'S' and relname like '%\\_id\\_seq' and relname not like 'sales\\_record%'
+      union all select proname from pg_proc where pronamespace = 'public'::regnamespace`);
+    expect(r.rows.length).toBeGreaterThan(30);
+    expect(r.rows.filter((x) => !x.name.startsWith("mf_"))).toEqual([]);
   });
 
   it("매출 행은 그대로", async () => {
@@ -97,7 +109,7 @@ describe("부부 일기 지우기 · 매출 남기기", () => {
   });
 
   it("첫 관리자는 app@bibimble.com 하나", async () => {
-    const r = await db.query<{ email: string; is_admin: boolean }>(`select email, is_admin from public.member`);
+    const r = await db.query<{ email: string; is_admin: boolean }>(`select email, is_admin from public.mf_member`);
     expect(r.rows).toEqual([{ email: "app@bibimble.com", is_admin: true }]);
   });
 });
@@ -109,103 +121,103 @@ describe("회원 판정 — 구글 계정 이메일", () => {
   });
 
   it("등록된 이메일이어도 구글 로그인이 아니면 회원이 아니다", async () => {
-    expect(await count(IMPOSTOR, "member")).toBe(0);
-    expect(await errorCode(IMPOSTOR, `insert into public.member (email) values ('evil@x.kr')`)).toBe("42501");
+    expect(await count(IMPOSTOR, "mf_member")).toBe(0);
+    expect(await errorCode(IMPOSTOR, `insert into public.mf_member (email) values ('evil@x.kr')`)).toBe("42501");
   });
 
   it("등록 안 된 계정은 아무것도 못 본다", async () => {
-    expect(await count(STRANGER, "member")).toBe(0);
-    expect(await count(STRANGER, "room")).toBe(0);
+    expect(await count(STRANGER, "mf_member")).toBe(0);
+    expect(await count(STRANGER, "mf_room")).toBe(0);
     expect(await count(STRANGER, "sales_record")).toBe(0);
   });
 
   it("등록 안 된 계정은 기록을 못 쓴다", async () => {
-    expect(await errorCode(STRANGER, `insert into public.daily_log (log_date, bottled_count) values ('2026-11-01', 1)`)).toBe("42501");
-    expect(await errorCode(STRANGER, `select public.save_day('2026-11-01', 1, null, null, '', '[]')`)).toBe("42501");
+    expect(await errorCode(STRANGER, `insert into public.mf_daily_log (log_date, bottled_count) values ('2026-11-01', 1)`)).toBe("42501");
+    expect(await errorCode(STRANGER, `select public.mf_save_day('2026-11-01', 1, null, null, '', '[]')`)).toBe("42501");
   });
 
   it("관리자가 계정을 더하면 그 계정이 들어온다", async () => {
-    expect(await errorCode(ADMIN, `insert into public.member (email) values ('worker@farm.kr')`)).toBeNull();
-    expect(await count(WORKER, "room")).toBe(2);
+    expect(await errorCode(ADMIN, `insert into public.mf_member (email) values ('worker@farm.kr')`)).toBeNull();
+    expect(await count(WORKER, "mf_room")).toBe(2);
   });
 
   it("관리자가 아니면 계정을 더하거나 빼지 못한다", async () => {
-    await asUser(WORKER, (tx) => tx.exec(`insert into public.member (email) values ('x@farm.kr')`)).catch(() => {});
-    expect(await count(ADMIN, "member")).toBe(2);
-    await asUser(WORKER, (tx) => tx.exec(`delete from public.member where email = 'worker@farm.kr'`));
-    expect(await count(ADMIN, "member")).toBe(2);
+    await asUser(WORKER, (tx) => tx.exec(`insert into public.mf_member (email) values ('x@farm.kr')`)).catch(() => {});
+    expect(await count(ADMIN, "mf_member")).toBe(2);
+    await asUser(WORKER, (tx) => tx.exec(`delete from public.mf_member where email = 'worker@farm.kr'`));
+    expect(await count(ADMIN, "mf_member")).toBe(2);
   });
 
   it("관리자는 자기(관리자 행)를 빼지 못하고, 관리자를 새로 만들지 못한다", async () => {
-    await asUser(ADMIN, (tx) => tx.exec(`delete from public.member where is_admin`));
-    expect(await count(ADMIN, "member")).toBe(2);
-    expect(await errorCode(ADMIN, `insert into public.member (email, is_admin) values ('boss@farm.kr', true)`)).toBe("42501");
+    await asUser(ADMIN, (tx) => tx.exec(`delete from public.mf_member where is_admin`));
+    expect(await count(ADMIN, "mf_member")).toBe(2);
+    expect(await errorCode(ADMIN, `insert into public.mf_member (email, is_admin) values ('boss@farm.kr', true)`)).toBe("42501");
   });
 
   it("이메일은 소문자·형식 검사", async () => {
-    expect(await errorCode(ADMIN, `insert into public.member (email) values ('Boss@farm.kr')`)).toBe("23514");
-    expect(await errorCode(ADMIN, `insert into public.member (email) values ('not-an-email')`)).toBe("23514");
+    expect(await errorCode(ADMIN, `insert into public.mf_member (email) values ('Boss@farm.kr')`)).toBe("23514");
+    expect(await errorCode(ADMIN, `insert into public.mf_member (email) values ('not-an-email')`)).toBe("23514");
   });
 });
 
-describe("하루 저장 — save_day", () => {
+describe("하루 저장 — mf_save_day", () => {
   const rooms = (good: string, defect: string, temp = "null", hum = "null") =>
     `'[{"room_id":${room1},"good_kg":${good},"defect_kg":${defect},"temperature_c":${temp},"humidity_pct":${hum}}]'`;
 
   it("저장하고 다시 저장하면 덮어쓴다(같은 날 두 줄이 안 생긴다)", async () => {
-    await asUser(ADMIN, (tx) => tx.exec(`select public.save_day('2026-11-05', 1200, 1100, 5, '메모', ${rooms("120.5", "8", "17.5", "90")})`));
-    await asUser(ADMIN, (tx) => tx.exec(`select public.save_day('2026-11-05', 1300, 1100, 5, '메모', ${rooms("121", "8")})`));
-    const d = await db.query(`select bottled_count, memo from public.daily_log where log_date = '2026-11-05'`);
+    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_save_day('2026-11-05', 1200, 1100, 5, '메모', ${rooms("120.5", "8", "17.5", "90")})`));
+    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_save_day('2026-11-05', 1300, 1100, 5, '메모', ${rooms("121", "8")})`));
+    const d = await db.query(`select bottled_count, memo from public.mf_daily_log where log_date = '2026-11-05'`);
     expect(d.rows).toEqual([{ bottled_count: 1300, memo: "메모" }]);
     const r = await db.query<{ good_kg: string; temperature_c: string | null }>(
-      `select good_kg::text, temperature_c::text from public.room_log where log_date = '2026-11-05'`,
+      `select good_kg::text, temperature_c::text from public.mf_room_log where log_date = '2026-11-05'`,
     );
     expect(r.rows).toEqual([{ good_kg: "121.0", temperature_c: null }]);
   });
 
   it("빈칸은 null, 0 은 0 으로 남는다", async () => {
-    await asUser(ADMIN, (tx) => tx.exec(`select public.save_day('2026-11-04', 0, null, null, '', '[]')`));
-    const d = await db.query(`select bottled_count, inoculated_count from public.daily_log where log_date = '2026-11-04'`);
+    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_save_day('2026-11-04', 0, null, null, '', '[]')`));
+    const d = await db.query(`select bottled_count, inoculated_count from public.mf_daily_log where log_date = '2026-11-04'`);
     expect(d.rows).toEqual([{ bottled_count: 0, inoculated_count: null }]);
   });
 
   it("칸이 모두 비면 그 날 행을 지운다", async () => {
-    await asUser(ADMIN, (tx) => tx.exec(`select public.save_day('2026-11-05', null, null, null, '  ', ${rooms("null", "null")})`));
-    expect((await db.query(`select 1 from public.daily_log where log_date = '2026-11-05'`)).rows).toHaveLength(0);
-    expect((await db.query(`select 1 from public.room_log where log_date = '2026-11-05'`)).rows).toHaveLength(0);
+    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_save_day('2026-11-05', null, null, null, '  ', ${rooms("null", "null")})`));
+    expect((await db.query(`select 1 from public.mf_daily_log where log_date = '2026-11-05'`)).rows).toHaveLength(0);
+    expect((await db.query(`select 1 from public.mf_room_log where log_date = '2026-11-05'`)).rows).toHaveLength(0);
   });
 
   it("음수·습도 101·영하 21도는 거절하고, 거절되면 아무것도 저장되지 않는다", async () => {
-    expect(await errorCode(ADMIN, `select public.save_day('2026-11-03', -1, null, null, '', '[]')`)).toBe("23514");
-    expect(await errorCode(ADMIN, `select public.save_day('2026-11-03', 10, null, null, '', ${rooms("1", "-0.1")})`)).toBe("23514");
-    expect(await errorCode(ADMIN, `select public.save_day('2026-11-03', 10, null, null, '', ${rooms("1", "0", "null", "101")})`)).toBe("23514");
-    expect(await errorCode(ADMIN, `select public.save_day('2026-11-03', 10, null, null, '', ${rooms("1", "0", "-21")})`)).toBe("23514");
-    expect((await db.query(`select 1 from public.daily_log where log_date = '2026-11-03'`)).rows).toHaveLength(0);
+    expect(await errorCode(ADMIN, `select public.mf_save_day('2026-11-03', -1, null, null, '', '[]')`)).toBe("23514");
+    expect(await errorCode(ADMIN, `select public.mf_save_day('2026-11-03', 10, null, null, '', ${rooms("1", "-0.1")})`)).toBe("23514");
+    expect(await errorCode(ADMIN, `select public.mf_save_day('2026-11-03', 10, null, null, '', ${rooms("1", "0", "null", "101")})`)).toBe("23514");
+    expect(await errorCode(ADMIN, `select public.mf_save_day('2026-11-03', 10, null, null, '', ${rooms("1", "0", "-21")})`)).toBe("23514");
+    expect((await db.query(`select 1 from public.mf_daily_log where log_date = '2026-11-03'`)).rows).toHaveLength(0);
   });
 
   it("하루 지우기", async () => {
-    await asUser(ADMIN, (tx) => tx.exec(`select public.save_day('2026-11-02', 10, null, null, '', ${rooms("3", "1")})`));
-    await asUser(ADMIN, (tx) => tx.exec(`select public.delete_day('2026-11-02')`));
-    expect((await db.query(`select 1 from public.room_log where log_date = '2026-11-02'`)).rows).toHaveLength(0);
-    expect((await db.query(`select 1 from public.daily_log where log_date = '2026-11-02'`)).rows).toHaveLength(0);
+    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_save_day('2026-11-02', 10, null, null, '', ${rooms("3", "1")})`));
+    await asUser(ADMIN, (tx) => tx.exec(`select public.mf_delete_day('2026-11-02')`));
+    expect((await db.query(`select 1 from public.mf_room_log where log_date = '2026-11-02'`)).rows).toHaveLength(0);
+    expect((await db.query(`select 1 from public.mf_daily_log where log_date = '2026-11-02'`)).rows).toHaveLength(0);
   });
 });
 
-describe("합계 함수 — farm_days · room_totals", () => {
+describe("합계 함수 — mf_farm_days · mf_room_totals", () => {
   beforeAll(async () => {
-    await db.exec(`delete from public.room_log; delete from public.daily_log;`);
+    await db.exec(`delete from public.mf_room_log; delete from public.mf_daily_log;`);
     await asUser(ADMIN, (tx) =>
       tx.exec(`
-        select public.save_day('2026-10-01', 1000, 900, 10, '', '[{"room_id":${room1},"good_kg":100,"defect_kg":10},{"room_id":${room2},"good_kg":50.5,"defect_kg":null}]');
-        select public.save_day('2026-10-02', null, null, null, '물 줌', '[]');
-        select public.save_day('2026-10-03', null, null, null, '', '[{"room_id":${room2},"good_kg":null,"defect_kg":null,"temperature_c":18}]');
+        select public.mf_save_day('2026-10-01', 1000, 900, 10, '', '[{"room_id":${room1},"good_kg":100,"defect_kg":10},{"room_id":${room2},"good_kg":50.5,"defect_kg":null}]');
+        select public.mf_save_day('2026-10-02', null, null, null, '물 줌', '[]');
+        select public.mf_save_day('2026-10-03', null, null, null, '', '[{"room_id":${room2},"good_kg":null,"defect_kg":null,"temperature_c":18}]');
       `),
     );
   });
 
   it("날짜별로 호실 수확을 더하고, 기록 있는 날만 나온다", async () => {
     const r = await asUser(ADMIN, (tx) =>
-      tx.query(`select log_date::text, bottled_count::int, good_kg::text, defect_kg::text, has_memo from public.farm_days('2026-10-01', '2026-10-31')`),
+      tx.query(`select log_date::text, bottled_count::int, good_kg::text, defect_kg::text, has_memo from public.mf_farm_days('2026-10-01', '2026-10-31')`),
     );
     expect(r.rows).toEqual([
       { log_date: "2026-10-01", bottled_count: 1000, good_kg: "150.5", defect_kg: "10.0", has_memo: false },
@@ -216,7 +228,7 @@ describe("합계 함수 — farm_days · room_totals", () => {
 
   it("호실별 합계", async () => {
     const r = await asUser(ADMIN, (tx) =>
-      tx.query(`select name, good_kg::text, defect_kg::text from public.room_totals('2026-10-01', '2026-10-31')`),
+      tx.query(`select name, good_kg::text, defect_kg::text from public.mf_room_totals('2026-10-01', '2026-10-31')`),
     );
     expect(r.rows).toEqual([
       { name: "1호실", good_kg: "100.0", defect_kg: "10.0" },
@@ -225,23 +237,23 @@ describe("합계 함수 — farm_days · room_totals", () => {
   });
 
   it("등록 안 된 계정에는 0행", async () => {
-    const r = await asUser(STRANGER, (tx) => tx.query(`select * from public.farm_days('2026-10-01', '2026-10-31')`));
+    const r = await asUser(STRANGER, (tx) => tx.query(`select * from public.mf_farm_days('2026-10-01', '2026-10-31')`));
     expect(r.rows).toHaveLength(0);
   });
 });
 
 describe("호실", () => {
   it("같은 이름은 거절", async () => {
-    expect(await errorCode(ADMIN, `insert into public.room (name) values ('1호실')`)).toBe("23505");
+    expect(await errorCode(ADMIN, `insert into public.mf_room (name) values ('1호실')`)).toBe("23505");
   });
 
   it("기록이 있는 호실은 지우지 못한다", async () => {
-    expect(await errorCode(ADMIN, `delete from public.room where name = '1호실'`)).toBe("23503");
+    expect(await errorCode(ADMIN, `delete from public.mf_room where name = '1호실'`)).toBe("23503");
   });
 
   it("기록이 없는 호실은 지운다", async () => {
-    await asUser(ADMIN, (tx) => tx.exec(`insert into public.room (name) values ('3호실')`));
-    expect(await errorCode(ADMIN, `delete from public.room where name = '3호실'`)).toBeNull();
-    expect(await count(ADMIN, "room")).toBe(2);
+    await asUser(ADMIN, (tx) => tx.exec(`insert into public.mf_room (name) values ('3호실')`));
+    expect(await errorCode(ADMIN, `delete from public.mf_room where name = '3호실'`)).toBeNull();
+    expect(await count(ADMIN, "mf_room")).toBe(2);
   });
 });

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/shared/lib/supabase/server";
 import { fail, type Failure } from "@/shared/lib/result";
 
-export type Member = {
+type Member = {
   id: number;
   email: string;
   isAdmin: boolean;
@@ -22,7 +22,7 @@ const loadContext = cache(async (): Promise<{ supabase: Supabase; uid: string | 
   if (!uid) return { supabase, uid: null, ctx: null };
 
   // 회원이 아니면 RLS 가 member 를 0행으로 돌려준다. 회원 판정의 기준은 DB(app.current_member_id)다.
-  const { data: rows } = await supabase.from("member").select("id, email, is_admin");
+  const { data: rows } = await supabase.from("mf_member").select("id, email, is_admin");
   const row = (rows ?? []).find((m) => m.email === email);
   if (!row) return { supabase, uid, ctx: null };
   return { supabase, uid, ctx: { supabase, me: { id: Number(row.id), email: row.email, isAdmin: row.is_admin } } };

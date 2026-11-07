@@ -1,61 +1,76 @@
-# 부부 가계부 (Couple Household Ledger)
+# 버섯재배관리 (mushroom-farm)
 
-부부가 함께 쓰는 가계부 앱입니다. **매달 고정지출부터 빼고 시작**해서, 매출·급여가 들어오면 `+`,
-지출하면 `−` 되어 중앙 화면에서 **실시간 잔액**을 봅니다. React + Vite + Supabase, GitHub Pages 배포.
+버섯 농장의 하루 기록(입병·접종·오염, 호실별 수확·온습도)을 적고, 기간별로 수확량·불량률을 분석하는 웹앱입니다.
+아이폰 홈 화면에 추가해서 쓰는 PWA이고, 허용된 구글 계정만 쓸 수 있습니다.
 
-> 이 저장소는 원래 "미용실 매출 관리" 앱이었고, 아내의 미용실 매출 관리(현금/카드 10% 수수료)를
-> 그대로 품은 채 부부 가계부로 확장되었습니다.
+> 이 저장소는 미용실 매출 관리 → 부부 가계부 → 부부 일기를 거쳐 버섯재배관리로 바뀌었습니다.
+> 옛 마이그레이션(`0001`~`0010`, `20261023*`, `20261028*`)은 이력으로 남겨 둡니다.
 
-## 핵심 개념
+## 화면 (아래 탭)
+
+- **기록** (`/log`) — 하루 기록 입력. 농장: 입병·접종·배양 오염(병 수), 메모 / 호실별: 정품·불량 kg, 온도·습도
+- **목록** (`/list`) — 날짜별 기록 목록
+- **분석** (`/stats`) — 1주·1달·3달·6달·1년 기간별 수확량·불량률 추이
+- **더보기** (`/more`) — 호실 관리(`/more/rooms`), 계정 관리(`/more/members`), 푸시 설정
+
+## 스택
+
+- Next.js 16 App Router + TypeScript, React 19
+- Supabase (Postgres, Auth — 구글 로그인, RLS)
+- shadcn/ui + Tailwind CSS 4
+- Web Push (`web-push`, 서비스 워커 `public/sw.js`)
+- Vitest (DB 테스트는 PGlite)
+- 배포: Vercel
+
+## 구조
 
 ```
-이번 달 잔액 = − 고정지출 + (매출·급여) − 변동지출
+src/app/        라우트만
+src/features/   기능별 코드 (farm-log, room, analysis, member, push)
+src/shared/     공통 UI·라이브러리·문구
+supabase/       마이그레이션·DB 테스트
+docs/           decisions.md(결정), design.md(화면 규칙)
 ```
 
-- 모든 데이터는 부부가 **투명하게 공유**(전부 열람·수정). "누가"는 색 태그(아내·남편·공금)로 구분.
-- 로그인한 사람에 따라 입력 시 **소유자가 자동 선택**되고, 직접 탭해야만 바뀝니다.
-
-## 화면 (하단 탭 + 우상단 ⚙ 설정)
-
-- **홈** — 현재 잔액 + 흐름 계산(−고정 / +수입 / −변동 / =잔액) + 대메뉴
-- **지출** — `고정 · 아내 · 남편 · 공금` (사람별 카테고리 사용 + 고정지출 관리)
-- **＋ 입력** — 커스텀 숫자 키패드(시스템 키보드 미사용), 지출/수입·카테고리·누구·결제수단·날짜·메모
-- **매출·급여** — 매출관리(아내·현금/카드+수수료) / 급여관리(남편·금액만)
-- **기록** — 월 이동 + 종류·소유자·결제수단 필터 + 월별/일별 보기
+- 읽기는 서버 컴포넌트, 쓰기는 서버 액션. 브라우저는 DB 에 직접 붙지 않습니다.
+- 서버 결과는 `{ ok: true, data }` 또는 `{ ok: false, code }`. 문구는 `src/shared/messages.ts`.
 
 ## 설치 / 실행
 
 ```
 npm install
-npm run dev
-npm run build      # 프로덕션 빌드
-npm run deploy     # GitHub Pages 배포
-npm test           # 유닛 테스트
+npm run dev        # http://localhost:3000
+npm run build
+npm run typecheck
+npm run lint
+npm test
+npm run db:types   # Supabase 타입 다시 생성 (supabase link 필요)
 ```
 
-## Supabase 설정 (필수)
+## 환경 변수 (`.env.local`)
 
-자세한 절차는 [`SETUP_SUPABASE.md`](./SETUP_SUPABASE.md).
+| 변수 | 확인 위치 |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → Data API → Project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase → Project Settings → API Keys → Publishable key |
+| `SUPABASE_SECRET_KEY` | Supabase → Project Settings → API Keys → Secret key (RLS 무시 — 노출 금지) |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Vercel 환경 변수 (새로 만들 때: `npx web-push generate-vapid-keys`) |
+| `VAPID_PRIVATE_KEY` | 위와 같은 키 쌍 |
+| `VAPID_SUBJECT` | 직접 정하는 연락처: `mailto:<이메일>` |
 
-1. **SQL 실행**: SQL Editor에서 `supabase/migrations/0006_household_ledger.sql` 실행
-   (transactions/fixed_expenses/expense_categories 생성 + 기존 매출 자동 이관)
-2. **계정 2개 생성**: Auth → Users 에서 아내·남편 계정 생성
-3. **역할 지정**: 각 계정의 user metadata 에 `{ "role": "wife" }` / `{ "role": "husband" }`
-   (또는 `src/lib/members.js` 의 `EMAIL_ROLE` 에 이메일→역할 매핑)
-4. `.env.local` 에 `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` 설정
+로컬 로그인에는 Supabase → Authentication → URL Configuration → Redirect URLs 에
+`http://localhost:3000/auth/callback` 이 있어야 하고, 로그인할 이메일이 `mf_member` 표에 있어야 합니다.
 
 ## 데이터 모델
 
-- **transactions** — id, flow(income/expense), amount(원금), final(실수령), category, owner(wife/husband/joint), method(카드/현금/계좌), memo, date
-- **fixed_expenses** — id, name, amount, day(결제일), method
-- **expense_categories** — id, name, sort (설정에서 추가/삭제)
+운영 DB 는 매출 앱 [sales-tracker](https://github.com/tree0327/sales-tracker)(`sale`, `sales_member` 등)와 같이 씁니다.
+이 앱의 표·public 함수는 모두 `mf_` 로 시작합니다. 접두사 없는 표는 이 앱 것이 아닙니다.
 
-RLS: 로그인(authenticated) 사용자만 전체 접근, 비로그인(anon) 차단.
+- **mf_member** — 로그인할 수 있는 구글 이메일, `is_admin`(관리자 한 명)
+- **mf_room** — 수확 호실. 기록이 있으면 지우지 못하고 `is_active=false` 로 둡니다
+- **mf_daily_log** — 날짜별 농장 기록(입병·접종·오염 병 수, 메모). `null` = 안 적음
+- **mf_room_log** — 날짜×호실 기록(정품·불량 kg, 온도, 습도)
+- **mf_push_subscription** · **mf_if_push_subscription** · **mf_push_log** — 푸시 구독·발송 기록
+- DB 함수: `mf_save_day`, `mf_delete_day`, `mf_farm_days`, `mf_room_totals`, `app.current_member_id()`, `app.is_admin()`
 
-## 설계 문서
-
-- `docs/superpowers/specs/2026-07-17-couple-household-ledger-design.md`
-
-## 이후 계획 (Phase 2+)
-
-거래 수정/삭제 UI, 월 예산, 분석 그래프, AI 가계부 인사이트, PWA, 자산/공금 잔고, CSV·스크린샷 입력.
+정의: `supabase/migrations/20261105100000_mushroom_core.sql`, `20261107120000_mf_prefix.sql`

@@ -30,7 +30,7 @@ export type DayInput = z.input<typeof dayInput>;
 
 const oneDecimal = (n: number | null) => (n === null ? null : Math.round(n * 10) / 10);
 
-// 하루를 한 번에 저장한다(DB save_day — 칸이 모두 빈 행은 지운다).
+// 하루를 한 번에 저장한다(DB mf_save_day — 칸이 모두 빈 행은 지운다).
 export async function saveDay(input: DayInput): Promise<Result> {
   const auth = await requireMember();
   if (!auth.ok) return auth;
@@ -38,7 +38,7 @@ export async function saveDay(input: DayInput): Promise<Result> {
   if (!parsed.success) return fail("LOG_INVALID");
   const d = parsed.data;
 
-  const { error } = await auth.supabase.rpc("save_day", {
+  const { error } = await auth.supabase.rpc("mf_save_day", {
     p_log_date: d.date,
     p_bottled_count: d.bottled,
     p_inoculated_count: d.inoculated,
@@ -65,7 +65,7 @@ export async function deleteDay(date: string): Promise<Result> {
   const auth = await requireMember();
   if (!auth.ok) return auth;
   if (!z.iso.date().safeParse(date).success) return fail("INVALID_INPUT");
-  const { error } = await auth.supabase.rpc("delete_day", { p_log_date: date });
+  const { error } = await auth.supabase.rpc("mf_delete_day", { p_log_date: date });
   if (error) return fail(codeFromDbError(error));
   revalidatePath("/", "layout");
   return okVoid();

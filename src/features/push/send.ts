@@ -35,7 +35,7 @@ export async function sendPush(msg: PushMessage): Promise<SendOutcome> {
   const db = createAdminClient();
 
   const { data: claimed, error: claimError } = await db
-    .from("push_log")
+    .from("mf_push_log")
     .upsert(
       { kind: msg.kind, ref_date: msg.refDate, recipient_id: msg.recipientId, ref_id: msg.refId ?? null },
       { onConflict: "kind,ref_date,recipient_id,ref_id", ignoreDuplicates: true },
@@ -49,13 +49,13 @@ export async function sendPush(msg: PushMessage): Promise<SendOutcome> {
   const logId = claimed[0].id;
 
   const { data: subs } = await db
-    .from("push_subscription")
+    .from("mf_push_subscription")
     .select("id, endpoint, p256dh, auth_key")
     .eq("member_id", msg.recipientId)
     .eq("is_active", true);
 
   if (!subs || subs.length === 0) {
-    await db.from("push_log").update({ result: "no_subscription" }).eq("id", logId);
+    await db.from("mf_push_log").update({ result: "no_subscription" }).eq("id", logId);
     return "no_subscription";
   }
 
@@ -73,7 +73,7 @@ export async function sendPush(msg: PushMessage): Promise<SendOutcome> {
         const status = (e as { statusCode?: number }).statusCode;
         // 404·410 = 구독이 사라짐(앱 삭제·알림 끔). 다음부터 보내지 않는다.
         if (status === 404 || status === 410) {
-          await db.from("push_subscription").update({ is_active: false }).eq("id", s.id);
+          await db.from("mf_push_subscription").update({ is_active: false }).eq("id", s.id);
         } else {
           console.error("push send failed", status, e);
         }
@@ -82,6 +82,6 @@ export async function sendPush(msg: PushMessage): Promise<SendOutcome> {
   );
 
   const result = sent > 0 ? "sent" : "failed";
-  await db.from("push_log").update({ result, sent_count: sent }).eq("id", logId);
+  await db.from("mf_push_log").update({ result, sent_count: sent }).eq("id", logId);
   return result;
 }
